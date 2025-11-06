@@ -566,42 +566,51 @@ def main():
             land_area_range = None
     
     with st.sidebar.expander("📋 Property Details", expanded=False):
-        # Record filter
-        records = sorted(df['Record'].dropna().unique())
-        
-        st.write("**Record Type**")
-        filter_record = st.checkbox("Filter by record type", value=False, key="filter_record")
-        if filter_record:
-            selected_records = st.multiselect(
-                "Select records",
-                records,
-                default=records,
-                label_visibility="collapsed"
-            )
+        # Record filter (only if column exists)
+        if 'Record' in df.columns:
+            records = sorted(df['Record'].dropna().unique())
+            
+            st.write("**Record Type**")
+            filter_record = st.checkbox("Filter by record type", value=False, key="filter_record")
+            if filter_record:
+                selected_records = st.multiselect(
+                    "Select records",
+                    records,
+                    default=records,
+                    label_visibility="collapsed"
+                )
+            else:
+                selected_records = records
         else:
-            selected_records = records
+            selected_records = None
         
         st.markdown("---")
         
-        # Dom_Parts filter
-        dom_parts = sorted(df['Dom_Parts'].dropna().unique())
-        
-        st.write("**Property Parts (Dom_Parts)**")
-        filter_dom_parts = st.checkbox("Filter by property parts", value=False, key="filter_dom_parts")
-        if filter_dom_parts:
-            # Show only common ones by default, with option to show all
-            common_parts = ['1/1', '1/2', '1/3', '1/4', '1/5', '1/6']
-            available_common = [p for p in common_parts if p in dom_parts]
-            
-            selected_dom_parts = st.multiselect(
-                "Select property parts",
-                dom_parts,
-                default=available_common if available_common else dom_parts[:5],
-                label_visibility="collapsed",
-                help=f"Total {len(dom_parts)} unique values available"
-            )
+        # Dom_Parts filter (only if column exists)
+        if 'Dom_Parts' in df.columns:
+            dom_parts = sorted(df['Dom_Parts'].dropna().unique())
         else:
-            selected_dom_parts = dom_parts
+            dom_parts = []
+        
+        if len(dom_parts) > 0:
+            st.write("**Property Parts (Dom_Parts)**")
+            filter_dom_parts = st.checkbox("Filter by property parts", value=False, key="filter_dom_parts")
+            if filter_dom_parts:
+                # Show only common ones by default, with option to show all
+                common_parts = ['1/1', '1/2', '1/3', '1/4', '1/5', '1/6']
+                available_common = [p for p in common_parts if p in dom_parts]
+                
+                selected_dom_parts = st.multiselect(
+                    "Select property parts",
+                    dom_parts,
+                    default=available_common if available_common else dom_parts[:5],
+                    label_visibility="collapsed",
+                    help=f"Total {len(dom_parts)} unique values available"
+                )
+            else:
+                selected_dom_parts = dom_parts
+        else:
+            selected_dom_parts = None
         
         st.markdown("---")
         
@@ -780,11 +789,11 @@ def main():
         ]
     
     # Record filter
-    if selected_records:
+    if selected_records is not None and 'Record' in df_filtered.columns:
         df_filtered = df_filtered[df_filtered['Record'].isin(selected_records)]
     
     # Dom_Parts filter
-    if selected_dom_parts:
+    if selected_dom_parts is not None and 'Dom_Parts' in df_filtered.columns:
         df_filtered = df_filtered[df_filtered['Dom_Parts'].isin(selected_dom_parts)]
     
     # Finishing filter
@@ -846,10 +855,14 @@ def main():
         filter_summary.append(f"Total Area: {total_area_range[0]:.0f} - {total_area_range[1]:.0f} m²")
     if land_area_range:
         filter_summary.append(f"Land Area: {land_area_range[0]:.0f} - {land_area_range[1]:.0f} m²")
-    if filter_record and len(selected_records) < len(records):
-        filter_summary.append(f"Records: {len(selected_records)}/{len(records)}")
-    if filter_dom_parts and len(selected_dom_parts) < len(dom_parts):
-        filter_summary.append(f"Dom Parts: {len(selected_dom_parts)}/{len(dom_parts)}")
+    if selected_records is not None and 'Record' in df.columns:
+        records_list = sorted(df['Record'].dropna().unique())
+        if len(selected_records) < len(records_list):
+            filter_summary.append(f"Records: {len(selected_records)}/{len(records_list)}")
+    if selected_dom_parts is not None and 'Dom_Parts' in df.columns:
+        dom_parts_list = sorted(df['Dom_Parts'].dropna().unique())
+        if len(selected_dom_parts) < len(dom_parts_list):
+            filter_summary.append(f"Dom Parts: {len(selected_dom_parts)}/{len(dom_parts_list)}")
     if selected_finishing:
         filter_summary.append(f"Finishing: {len(selected_finishing)} types")
     if filter_category and len(selected_categories) < len(categories):
