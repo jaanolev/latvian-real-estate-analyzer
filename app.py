@@ -25,13 +25,15 @@ def load_data(property_type='Houses'):
     # Select the appropriate CSV file
     if property_type == 'Apartments':
         filename = 'LV_apartments_merged_mapped_unfiltered.csv'
+    elif property_type == 'Agricultural land':
+        filename = 'LV_agriland_merged_mapped_unfiltered.csv'
     else:
         filename = 'LV_houses_merged_mapped_unfiltered.csv'
     
     df = pd.read_csv(filename, index_col=0)
     
     # Clean numeric columns
-    numeric_cols = ['Sold_Area_m2', 'Total_Area_m2', 'Price_EUR', 'Total_EUR_m2', 'Interior_Area_m2']
+    numeric_cols = ['Sold_Area_m2', 'Total_Area_m2', 'Price_EUR', 'Total_EUR_m2', 'Land_EUR_m2', 'Interior_Area_m2']
     for col in numeric_cols:
         if col in df.columns:
             df[col] = clean_numeric_column(df[col])
@@ -54,20 +56,23 @@ def load_data(property_type='Houses'):
     
     return df
 
-def calculate_price_per_m2(df, use_total_eur_m2=False):
+def calculate_price_per_m2(df, use_total_eur_m2=False, property_type='Houses'):
     """Calculate price per square meter"""
     df = df.copy()
     if use_total_eur_m2:
-        # Use the existing Total_EUR_m2 column
-        df['Price_per_m2'] = df['Total_EUR_m2']
+        # For Agricultural land, use Land_EUR_m2, otherwise use Total_EUR_m2
+        if property_type == 'Agricultural land':
+            df['Price_per_m2'] = df['Land_EUR_m2']
+        else:
+            df['Price_per_m2'] = df['Total_EUR_m2']
     else:
         # Calculate from Price_EUR / Sold_Area_m2
         df['Price_per_m2'] = df['Price_EUR'] / df['Sold_Area_m2']
     return df
 
-def aggregate_by_region_quarter(df, use_total_eur_m2=False):
+def aggregate_by_region_quarter(df, use_total_eur_m2=False, property_type='Houses'):
     """Aggregate data by region and quarter"""
-    df = calculate_price_per_m2(df, use_total_eur_m2)
+    df = calculate_price_per_m2(df, use_total_eur_m2, property_type)
     
     # Filter out invalid Year and Quarter values
     df = df[(df['Year'] > 0) & (df['Year'].notna()) & 
@@ -75,8 +80,11 @@ def aggregate_by_region_quarter(df, use_total_eur_m2=False):
     
     # Filter out rows with missing data based on calculation method
     if use_total_eur_m2:
-        # When using Total_EUR_m2, only require Total_EUR_m2 to be valid
-        df = df[df['Total_EUR_m2'].notna() & (df['Total_EUR_m2'] > 0)].copy()
+        # When using Total_EUR_m2 or Land_EUR_m2, only require the appropriate column to be valid
+        if property_type == 'Agricultural land':
+            df = df[df['Land_EUR_m2'].notna() & (df['Land_EUR_m2'] > 0)].copy()
+        else:
+            df = df[df['Total_EUR_m2'].notna() & (df['Total_EUR_m2'] > 0)].copy()
     else:
         # When calculating, require both Price_EUR and Sold_Area_m2 to be valid
         df = df[df['Price_EUR'].notna() & df['Sold_Area_m2'].notna() & (df['Sold_Area_m2'] > 0)].copy()
@@ -156,17 +164,21 @@ def create_index_table(prices_pivot, base_year=2020, base_quarter=1):
 
 def detect_outliers(df, use_total_eur_m2=False, method="IQR Method (1.5x - standard)", 
                    lower_percentile=None, upper_percentile=None,
-                   per_region=False, per_quarter=False):
+                   per_region=False, per_quarter=False, property_type='Houses'):
     """
     Detect outliers based on price per m² distribution
     Returns a boolean mask where True = keep, False = outlier (remove)
     """
     # Calculate price per m²
-    df_temp = calculate_price_per_m2(df.copy(), use_total_eur_m2)
+    df_temp = calculate_price_per_m2(df.copy(), use_total_eur_m2, property_type)
     
     # Determine which price column to use
     if use_total_eur_m2:
-        price_col = 'Total_EUR_m2'
+        # For Agricultural land, use Land_EUR_m2
+        if property_type == 'Agricultural land':
+            price_col = 'Land_EUR_m2'
+        else:
+            price_col = 'Total_EUR_m2'
     else:
         price_col = 'Price_per_m2'
     
@@ -296,9 +308,9 @@ def main():
     # Property type selector at the very top
     property_type = st.radio(
         "**Select Property Type:**",
-        options=["Houses", "Apartments"],
+        options=["Houses", "Apartments", "Agricultural land"],
         horizontal=True,
-        help="Switch between house and apartment analysis",
+        help="Switch between houses, apartments, and agricultural land analysis",
         key="property_type_selector"
     )
     
@@ -327,14 +339,24 @@ def main():
     # Price calculation method
     st.sidebar.markdown("---")
     st.sidebar.subheader("⚙️ Calculation Method")
-    price_method = st.sidebar.radio(
-        "Price per m² calculation:",
-        options=["Calculated (Price ÷ Sold Area)", "Use Total_EUR_m2 column"],
-        index=0,
-        help="Choose between calculating price per m² or using the existing Total_EUR_m2 column from the data"
-    )
     
-    use_total_eur_m2 = (price_method == "Use Total_EUR_m2 column")
+    # Adjust options based on property type
+    if property_type == 'Agricultural land':
+        price_method = st.sidebar.radio(
+            "Price per m² calculation:",
+            options=["Calculated (Price ÷ Sold Area)", "Use Land_EUR_m2 column"],
+            index=0,
+            help="Choose between calculating price per m² or using the existing Land_EUR_m2 column from the data"
+        )
+        use_total_eur_m2 = (price_method == "Use Land_EUR_m2 column")
+    else:
+        price_method = st.sidebar.radio(
+            "Price per m² calculation:",
+            options=["Calculated (Price ÷ Sold Area)", "Use Total_EUR_m2 column"],
+            index=0,
+            help="Choose between calculating price per m² or using the existing Total_EUR_m2 column from the data"
+        )
+        use_total_eur_m2 = (price_method == "Use Total_EUR_m2 column")
     
     # Initialize session state for filters
     if 'apply_filters' not in st.session_state:
@@ -444,24 +466,29 @@ def main():
         
         st.markdown("---")
         
-        # Price per m² filter (Total_EUR_m2)
+        # Price per m² filter (Total_EUR_m2 or Land_EUR_m2)
+        price_m2_col = 'Land_EUR_m2' if property_type == 'Agricultural land' else 'Total_EUR_m2'
         st.write("**Price per m² (EUR/m²)**")
         filter_price_m2 = st.checkbox("Filter by price per m²", value=False, key="filter_price_m2")
         if filter_price_m2:
-            df_price_m2 = df['Total_EUR_m2'].dropna()
-            if len(df_price_m2) > 0:
-                min_price_m2 = float(df_price_m2.min())
-                max_price_m2 = float(df_price_m2.max())
-                price_m2_range = st.slider(
-                    "Price per m² range",
-                    min_value=min_price_m2,
-                    max_value=max_price_m2,
-                    value=(min_price_m2, max_price_m2),
-                    format="€%.0f/m²",
-                    label_visibility="collapsed"
-                )
+            if price_m2_col in df.columns:
+                df_price_m2 = df[price_m2_col].dropna()
+                if len(df_price_m2) > 0:
+                    min_price_m2 = float(df_price_m2.min())
+                    max_price_m2 = float(df_price_m2.max())
+                    price_m2_range = st.slider(
+                        "Price per m² range",
+                        min_value=min_price_m2,
+                        max_value=max_price_m2,
+                        value=(min_price_m2, max_price_m2),
+                        format="€%.0f/m²",
+                        label_visibility="collapsed"
+                    )
+                else:
+                    st.warning("No price per m² data available")
+                    price_m2_range = None
             else:
-                st.warning("No price per m² data available")
+                st.warning(f"{price_m2_col} column not found")
                 price_m2_range = None
         else:
             price_m2_range = None
@@ -729,8 +756,10 @@ def main():
     
     # Price per m² filter
     if price_m2_range:
-        df_filtered = df_filtered[(df_filtered['Total_EUR_m2'] >= price_m2_range[0]) & 
-                                  (df_filtered['Total_EUR_m2'] <= price_m2_range[1])]
+        price_m2_col = 'Land_EUR_m2' if property_type == 'Agricultural land' else 'Total_EUR_m2'
+        if price_m2_col in df_filtered.columns:
+            df_filtered = df_filtered[(df_filtered[price_m2_col] >= price_m2_range[0]) & 
+                                      (df_filtered[price_m2_col] <= price_m2_range[1])]
     
     # Sold Area filter
     if sold_area_range:
@@ -781,7 +810,8 @@ def main():
             lower_percentile=lower_percentile,
             upper_percentile=upper_percentile,
             per_region=apply_per_region,
-            per_quarter=apply_per_quarter
+            per_quarter=apply_per_quarter,
+            property_type=property_type
         )
         df_filtered = df_filtered[outlier_mask]
         outliers_removed = records_before_outlier - len(df_filtered)
@@ -855,7 +885,7 @@ def main():
     if st.button("🚀 Generate Tables", type="primary", use_container_width=True):
         with st.spinner("Generating tables..."):
             # Aggregate data
-            agg_df = aggregate_by_region_quarter(df_filtered, use_total_eur_m2)
+            agg_df = aggregate_by_region_quarter(df_filtered, use_total_eur_m2, property_type)
             
             # Calculate all tables
             prices_original = create_prices_table(agg_df, ma_quarters=1)
@@ -877,6 +907,7 @@ def main():
             st.session_state['index_tables'] = [index_original, index_ma2, index_ma3, index_ma4]
             st.session_state['df_filtered'] = df_filtered
             st.session_state['use_total_eur_m2'] = use_total_eur_m2
+            st.session_state['property_type'] = property_type
         
         st.success("✅ Tables generated!")
     
@@ -908,7 +939,8 @@ def main():
             
             df_filt = st.session_state['df_filtered']
             use_total = st.session_state.get('use_total_eur_m2', False)
-            df_filt = calculate_price_per_m2(df_filt, use_total)
+            prop_type = st.session_state.get('property_type', 'Houses')
+            df_filt = calculate_price_per_m2(df_filt, use_total, prop_type)
             
             summary = df_filt.groupby('region_riga_separate').agg({
                 'Price_EUR': ['count', 'sum', 'mean', 'median'],
@@ -916,16 +948,23 @@ def main():
                 'Price_per_m2': ['mean', 'median', 'std']
             }).round(2)
             
-            method_label = "Total_EUR_m2" if use_total else "Calculated (Price ÷ Sold Area)"
+            if prop_type == 'Agricultural land':
+                method_label = "Land_EUR_m2" if use_total else "Calculated (Price ÷ Sold Area)"
+            else:
+                method_label = "Total_EUR_m2" if use_total else "Calculated (Price ÷ Sold Area)"
             st.caption(f"📊 Using: **{method_label}**")
             
             # Show data quality info based on calculation method
             total_records = len(st.session_state['df_filtered'])
             
             if use_total:
-                # Check Total_EUR_m2 validity
-                valid_for_prices = df_filt[df_filt['Total_EUR_m2'].notna() & (df_filt['Total_EUR_m2'] > 0)]
-                method_desc = "missing Total_EUR_m2"
+                # Check Total_EUR_m2 or Land_EUR_m2 validity
+                if prop_type == 'Agricultural land':
+                    valid_for_prices = df_filt[df_filt['Land_EUR_m2'].notna() & (df_filt['Land_EUR_m2'] > 0)]
+                    method_desc = "missing Land_EUR_m2"
+                else:
+                    valid_for_prices = df_filt[df_filt['Total_EUR_m2'].notna() & (df_filt['Total_EUR_m2'] > 0)]
+                    method_desc = "missing Total_EUR_m2"
             else:
                 # Check Price_EUR and Sold_Area_m2 validity
                 valid_for_prices = df_filt[df_filt['Price_EUR'].notna() & df_filt['Sold_Area_m2'].notna() & (df_filt['Sold_Area_m2'] > 0)]
@@ -937,7 +976,10 @@ def main():
             if excluded_count > 0:
                 st.warning(f"⚠️ **Data Quality Note:** {excluded_count:,} of {total_records:,} transactions ({excluded_count/total_records*100:.1f}%) were excluded from price calculations due to {method_desc}. These are still counted in the 'Counts' tab.")
                 if not use_total and excluded_count > total_records * 0.2:  # If more than 20% excluded with calculated method
-                    st.info(f"💡 **Tip:** Try using 'Total_EUR_m2 column' method (in sidebar) for better data coverage. It has no missing values and will include all {total_records:,} transactions!")
+                    if prop_type == 'Agricultural land':
+                        st.info(f"💡 **Tip:** Try using 'Land_EUR_m2 column' method (in sidebar) for better data coverage!")
+                    else:
+                        st.info(f"💡 **Tip:** Try using 'Total_EUR_m2 column' method (in sidebar) for better data coverage. It has no missing values and will include all {total_records:,} transactions!")
             else:
                 st.success(f"✅ All {total_records:,} transactions have complete data for the selected calculation method!")
             
@@ -975,7 +1017,11 @@ def main():
                 st.subheader(f"💰 Average Price per m² - {ma_label}")
                 
                 use_total = st.session_state.get('use_total_eur_m2', False)
-                method_label = "Total_EUR_m2" if use_total else "Calculated (Price ÷ Sold Area)"
+                prop_type = st.session_state.get('property_type', 'Houses')
+                if prop_type == 'Agricultural land':
+                    method_label = "Land_EUR_m2" if use_total else "Calculated (Price ÷ Sold Area)"
+                else:
+                    method_label = "Total_EUR_m2" if use_total else "Calculated (Price ÷ Sold Area)"
                 st.caption(f"📊 Using: **{method_label}**")
                 
                 prices_df = st.session_state['prices_tables'][i]
@@ -1065,7 +1111,11 @@ def main():
                 st.subheader(f"📈 Price Index (Base: 2020-Q1 = 1.0) - {ma_label}")
                 
                 use_total = st.session_state.get('use_total_eur_m2', False)
-                method_label = "Total_EUR_m2" if use_total else "Calculated (Price ÷ Sold Area)"
+                prop_type = st.session_state.get('property_type', 'Houses')
+                if prop_type == 'Agricultural land':
+                    method_label = "Land_EUR_m2" if use_total else "Calculated (Price ÷ Sold Area)"
+                else:
+                    method_label = "Total_EUR_m2" if use_total else "Calculated (Price ÷ Sold Area)"
                 st.caption(f"📊 Using: **{method_label}**")
                 
                 index_df = st.session_state['index_tables'][i]
@@ -1173,6 +1223,7 @@ def main():
                     # Apply outlier filtering
                     with st.spinner("Calculating outlier-filtered index..."):
                         df_for_comparison = st.session_state['df_filtered'].copy()
+                        prop_type = st.session_state.get('property_type', 'Houses')
                         
                         # Apply outlier filter
                         outlier_mask = detect_outliers(
@@ -1182,7 +1233,8 @@ def main():
                             lower_percentile=comparison_lower_pct,
                             upper_percentile=comparison_upper_pct,
                             per_region=comparison_per_region,
-                            per_quarter=comparison_per_quarter
+                            per_quarter=comparison_per_quarter,
+                            property_type=prop_type
                         )
                         df_outlier_filtered = df_for_comparison[outlier_mask]
                         
@@ -1193,7 +1245,7 @@ def main():
                         st.info(f"🎯 **Comparison Filter:** Removed {outliers_count:,} outliers ({outlier_pct:.1f}%) for this comparison")
                         
                         # Recalculate prices and index with outlier-filtered data
-                        agg_df_outlier = aggregate_by_region_quarter(df_outlier_filtered, use_total)
+                        agg_df_outlier = aggregate_by_region_quarter(df_outlier_filtered, use_total, prop_type)
                         prices_outlier = create_prices_table(agg_df_outlier, ma_quarters=i+1)
                         index_outlier = create_index_table(prices_outlier)
                     
@@ -1267,18 +1319,26 @@ def main():
             
             df_filt = st.session_state['df_filtered']
             use_total = st.session_state.get('use_total_eur_m2', False)
+            prop_type = st.session_state.get('property_type', 'Houses')
             
             # Calculate BOTH price per m² columns so users can compare
-            df_filt = calculate_price_per_m2(df_filt.copy(), use_total_eur_m2=False)  # Calculate Price_per_m2
+            df_filt = calculate_price_per_m2(df_filt.copy(), use_total_eur_m2=False, property_type=prop_type)  # Calculate Price_per_m2
             
             # Filter for valid data (need at least one valid price method)
-            df_dist = df_filt[
-                (df_filt['Price_EUR'].notna() & df_filt['Sold_Area_m2'].notna() & (df_filt['Sold_Area_m2'] > 0)) |
-                (df_filt['Total_EUR_m2'].notna() & (df_filt['Total_EUR_m2'] > 0))
-            ].copy()
-            
-            # Default price_col based on user's main calculation method
-            price_col = 'Total_EUR_m2' if use_total else 'Price_per_m2'
+            if prop_type == 'Agricultural land':
+                df_dist = df_filt[
+                    (df_filt['Price_EUR'].notna() & df_filt['Sold_Area_m2'].notna() & (df_filt['Sold_Area_m2'] > 0)) |
+                    (df_filt['Land_EUR_m2'].notna() & (df_filt['Land_EUR_m2'] > 0))
+                ].copy()
+                # Default price_col based on user's main calculation method
+                price_col = 'Land_EUR_m2' if use_total else 'Price_per_m2'
+            else:
+                df_dist = df_filt[
+                    (df_filt['Price_EUR'].notna() & df_filt['Sold_Area_m2'].notna() & (df_filt['Sold_Area_m2'] > 0)) |
+                    (df_filt['Total_EUR_m2'].notna() & (df_filt['Total_EUR_m2'] > 0))
+                ].copy()
+                # Default price_col based on user's main calculation method
+                price_col = 'Total_EUR_m2' if use_total else 'Price_per_m2'
             
             if len(df_dist) == 0:
                 st.warning("⚠️ No valid price data available for distribution analysis")
@@ -1299,36 +1359,68 @@ def main():
                     )
                 
                 with col2:
-                    price_metric = st.radio(
-                        "Price metric:",
-                        options=[
-                            "Price per m² (Calculated)",
-                            "Price per m² (Total_EUR_m2)",
-                            "Total Price"
-                        ],
-                        index=0,
-                        key="price_metric"
-                    )
-                    
-                    # Show data availability for each metric
-                    calc_valid = df_dist['Price_per_m2'].notna().sum()
-                    total_eur_valid = df_dist['Total_EUR_m2'].notna().sum()
-                    price_valid = df_dist['Price_EUR'].notna().sum()
-                    
-                    st.caption(f"📊 **Data availability:**")
-                    st.caption(f"Calculated: {calc_valid:,} records")
-                    st.caption(f"Total_EUR_m2: {total_eur_valid:,} records")
-                    st.caption(f"Total Price: {price_valid:,} records")
-                    
-                    if price_metric == "Total Price":
-                        plot_col = 'Price_EUR'
-                        y_label = "Price (EUR)"
-                    elif price_metric == "Price per m² (Total_EUR_m2)":
-                        plot_col = 'Total_EUR_m2'
-                        y_label = "Price per m² (EUR) - Total_EUR_m2"
-                    else:  # "Price per m² (Calculated)"
-                        plot_col = 'Price_per_m2'
-                        y_label = "Price per m² (EUR) - Calculated"
+                    if prop_type == 'Agricultural land':
+                        price_metric = st.radio(
+                            "Price metric:",
+                            options=[
+                                "Price per m² (Calculated)",
+                                "Price per m² (Land_EUR_m2)",
+                                "Total Price"
+                            ],
+                            index=0,
+                            key="price_metric"
+                        )
+                        
+                        # Show data availability for each metric
+                        calc_valid = df_dist['Price_per_m2'].notna().sum()
+                        land_eur_valid = df_dist['Land_EUR_m2'].notna().sum() if 'Land_EUR_m2' in df_dist.columns else 0
+                        price_valid = df_dist['Price_EUR'].notna().sum()
+                        
+                        st.caption(f"📊 **Data availability:**")
+                        st.caption(f"Calculated: {calc_valid:,} records")
+                        st.caption(f"Land_EUR_m2: {land_eur_valid:,} records")
+                        st.caption(f"Total Price: {price_valid:,} records")
+                        
+                        if price_metric == "Total Price":
+                            plot_col = 'Price_EUR'
+                            y_label = "Price (EUR)"
+                        elif price_metric == "Price per m² (Land_EUR_m2)":
+                            plot_col = 'Land_EUR_m2'
+                            y_label = "Price per m² (EUR) - Land_EUR_m2"
+                        else:  # "Price per m² (Calculated)"
+                            plot_col = 'Price_per_m2'
+                            y_label = "Price per m² (EUR) - Calculated"
+                    else:
+                        price_metric = st.radio(
+                            "Price metric:",
+                            options=[
+                                "Price per m² (Calculated)",
+                                "Price per m² (Total_EUR_m2)",
+                                "Total Price"
+                            ],
+                            index=0,
+                            key="price_metric"
+                        )
+                        
+                        # Show data availability for each metric
+                        calc_valid = df_dist['Price_per_m2'].notna().sum()
+                        total_eur_valid = df_dist['Total_EUR_m2'].notna().sum()
+                        price_valid = df_dist['Price_EUR'].notna().sum()
+                        
+                        st.caption(f"📊 **Data availability:**")
+                        st.caption(f"Calculated: {calc_valid:,} records")
+                        st.caption(f"Total_EUR_m2: {total_eur_valid:,} records")
+                        st.caption(f"Total Price: {price_valid:,} records")
+                        
+                        if price_metric == "Total Price":
+                            plot_col = 'Price_EUR'
+                            y_label = "Price (EUR)"
+                        elif price_metric == "Price per m² (Total_EUR_m2)":
+                            plot_col = 'Total_EUR_m2'
+                            y_label = "Price per m² (EUR) - Total_EUR_m2"
+                        else:  # "Price per m² (Calculated)"
+                            plot_col = 'Price_per_m2'
+                            y_label = "Price per m² (EUR) - Calculated"
                 
                 if selected_regions_dist:
                     df_plot = df_dist[df_dist['region_riga_separate'].isin(selected_regions_dist)].copy()
@@ -1686,7 +1778,8 @@ def main():
             with st.spinner("Generating Excel report..."):
                 df_filt = st.session_state['df_filtered']
                 use_total = st.session_state.get('use_total_eur_m2', False)
-                df_filt = calculate_price_per_m2(df_filt, use_total)
+                prop_type = st.session_state.get('property_type', 'Houses')
+                df_filt = calculate_price_per_m2(df_filt, use_total, prop_type)
                 
                 summary = df_filt.groupby('region_riga_separate').agg({
                     'Price_EUR': ['count', 'sum', 'mean', 'median'],
@@ -1748,6 +1841,7 @@ def main():
                 with st.spinner("Calculating merged region data..."):
                     # Get calculation method from session state
                     use_total = st.session_state.get('use_total_eur_m2', False)
+                    prop_type = st.session_state.get('property_type', 'Houses')
                     
                     # Filter to selected regions and relabel as merged
                     df_merged_regions = st.session_state['df_filtered'][
@@ -1756,7 +1850,7 @@ def main():
                     df_merged_regions['region_riga_separate'] = merge_name
                     
                     # Aggregate the merged data
-                    merged_agg = aggregate_by_region_quarter(df_merged_regions, use_total)
+                    merged_agg = aggregate_by_region_quarter(df_merged_regions, use_total, prop_type)
                     
                     # Calculate all merged tables
                     merged_prices_orig = create_prices_table(
@@ -1783,7 +1877,10 @@ def main():
                 
                 st.success(f"✅ Merged analysis generated for: **{merge_name}** ({', '.join(merge_regions_selected)})")
                 
-                method_label = "Total_EUR_m2" if use_total else "Calculated (Price ÷ Sold Area)"
+                if prop_type == 'Agricultural land':
+                    method_label = "Land_EUR_m2" if use_total else "Calculated (Price ÷ Sold Area)"
+                else:
+                    method_label = "Total_EUR_m2" if use_total else "Calculated (Price ÷ Sold Area)"
                 st.info(f"📊 Using calculation method: **{method_label}**")
                 
                 # Create tabs for merged results
