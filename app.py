@@ -1113,15 +1113,18 @@ def main():
             
             df_filt = st.session_state['df_filtered']
             use_total = st.session_state.get('use_total_eur_m2', False)
-            df_filt = calculate_price_per_m2(df_filt, use_total)
             
-            # Filter for valid prices
-            if use_total:
-                df_dist = df_filt[df_filt['Total_EUR_m2'].notna() & (df_filt['Total_EUR_m2'] > 0)].copy()
-                price_col = 'Total_EUR_m2'
-            else:
-                df_dist = df_filt[df_filt['Price_EUR'].notna() & df_filt['Sold_Area_m2'].notna() & (df_filt['Sold_Area_m2'] > 0)].copy()
-                price_col = 'Price_per_m2'
+            # Calculate BOTH price per m² columns so users can compare
+            df_filt = calculate_price_per_m2(df_filt.copy(), use_total_eur_m2=False)  # Calculate Price_per_m2
+            
+            # Filter for valid data (need at least one valid price method)
+            df_dist = df_filt[
+                (df_filt['Price_EUR'].notna() & df_filt['Sold_Area_m2'].notna() & (df_filt['Sold_Area_m2'] > 0)) |
+                (df_filt['Total_EUR_m2'].notna() & (df_filt['Total_EUR_m2'] > 0))
+            ].copy()
+            
+            # Default price_col based on user's main calculation method
+            price_col = 'Total_EUR_m2' if use_total else 'Price_per_m2'
             
             if len(df_dist) == 0:
                 st.warning("⚠️ No valid price data available for distribution analysis")
@@ -1144,17 +1147,34 @@ def main():
                 with col2:
                     price_metric = st.radio(
                         "Price metric:",
-                        options=["Price per m²", "Total Price"],
+                        options=[
+                            "Price per m² (Calculated)",
+                            "Price per m² (Total_EUR_m2)",
+                            "Total Price"
+                        ],
                         index=0,
                         key="price_metric"
                     )
                     
+                    # Show data availability for each metric
+                    calc_valid = df_dist['Price_per_m2'].notna().sum()
+                    total_eur_valid = df_dist['Total_EUR_m2'].notna().sum()
+                    price_valid = df_dist['Price_EUR'].notna().sum()
+                    
+                    st.caption(f"📊 **Data availability:**")
+                    st.caption(f"Calculated: {calc_valid:,} records")
+                    st.caption(f"Total_EUR_m2: {total_eur_valid:,} records")
+                    st.caption(f"Total Price: {price_valid:,} records")
+                    
                     if price_metric == "Total Price":
                         plot_col = 'Price_EUR'
                         y_label = "Price (EUR)"
-                    else:
-                        plot_col = price_col
-                        y_label = "Price per m² (EUR)"
+                    elif price_metric == "Price per m² (Total_EUR_m2)":
+                        plot_col = 'Total_EUR_m2'
+                        y_label = "Price per m² (EUR) - Total_EUR_m2"
+                    else:  # "Price per m² (Calculated)"
+                        plot_col = 'Price_per_m2'
+                        y_label = "Price per m² (EUR) - Calculated"
                 
                 if selected_regions_dist:
                     df_plot = df_dist[df_dist['region_riga_separate'].isin(selected_regions_dist)].copy()
