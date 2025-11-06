@@ -149,8 +149,17 @@ def create_counts_table(df):
     
     return pivot
 
-def create_index_table(prices_pivot, base_year=2020, base_quarter=1):
-    """Create index table with 2020-Q1 as base (=1.0)"""
+def create_index_table(prices_pivot, property_type='Houses', base_year=None, base_quarter=None):
+    """Create index table with base period (2020-Q1 for Houses/Apartments, 2021-Q1 for Agricultural land)"""
+    # Set default base period based on property type
+    if base_year is None or base_quarter is None:
+        if property_type == 'Agricultural land':
+            base_year = 2021
+            base_quarter = 1
+        else:
+            base_year = 2020
+            base_quarter = 1
+    
     base_col = f'{base_year}-Q{base_quarter}'
     
     if base_col not in prices_pivot.columns:
@@ -908,10 +917,10 @@ def main():
             
             counts = create_counts_table(df_filtered)
             
-            index_original = create_index_table(prices_original)
-            index_ma2 = create_index_table(prices_ma2)
-            index_ma3 = create_index_table(prices_ma3)
-            index_ma4 = create_index_table(prices_ma4)
+            index_original = create_index_table(prices_original, property_type)
+            index_ma2 = create_index_table(prices_ma2, property_type)
+            index_ma3 = create_index_table(prices_ma3, property_type)
+            index_ma4 = create_index_table(prices_ma4, property_type)
             
             # Store in session state
             st.session_state['agg_df'] = agg_df
@@ -1121,10 +1130,14 @@ def main():
         for i in range(4):
             with tabs[i+6]:
                 ma_label = f"Moving Average ({i+1} Quarter{'s' if i > 0 else ''})"
-                st.subheader(f"📈 Price Index (Base: 2020-Q1 = 1.0) - {ma_label}")
                 
                 use_total = st.session_state.get('use_total_eur_m2', False)
                 prop_type = st.session_state.get('property_type', 'Houses')
+                
+                # Set base period based on property type
+                base_period = "2021-Q1" if prop_type == 'Agricultural land' else "2020-Q1"
+                st.subheader(f"📈 Price Index (Base: {base_period} = 1.0) - {ma_label}")
+                
                 if prop_type == 'Agricultural land':
                     method_label = "Land_EUR_m2" if use_total else "Calculated (Price ÷ Sold Area)"
                 else:
@@ -1163,7 +1176,7 @@ def main():
                 fig = plot_regions(
                     index_df,
                     f"Price Index Over Time - {ma_label}",
-                    "Index (2020-Q1 = 1.0)",
+                    f"Index ({base_period} = 1.0)",
                     selected_regions=plot_regions_selected,
                     date_range=date_range_plot if len(available_quarters) > 1 else None
                 )
@@ -1260,7 +1273,7 @@ def main():
                         # Recalculate prices and index with outlier-filtered data
                         agg_df_outlier = aggregate_by_region_quarter(df_outlier_filtered, use_total, prop_type)
                         prices_outlier = create_prices_table(agg_df_outlier, ma_quarters=i+1)
-                        index_outlier = create_index_table(prices_outlier)
+                        index_outlier = create_index_table(prices_outlier, prop_type)
                     
                     # Region selector for comparison
                     st.markdown("#### 📊 Comparison Plot")
@@ -1309,7 +1322,7 @@ def main():
                         fig_comparison.update_layout(
                             title=f"Index Comparison: Original vs Outlier-Filtered - {ma_label}",
                             xaxis_title='Quarter',
-                            yaxis_title='Index (2020-Q1 = 1.0)',
+                            yaxis_title=f'Index ({base_period} = 1.0)',
                             hovermode='x unified',
                             height=600,
                             legend=dict(orientation="v", yanchor="top", y=1, xanchor="left", x=1.02)
@@ -1883,12 +1896,15 @@ def main():
                         ma_quarters=4
                     )
                     
-                    merged_index_orig = create_index_table(merged_prices_orig)
-                    merged_index_ma2 = create_index_table(merged_prices_ma2)
-                    merged_index_ma3 = create_index_table(merged_prices_ma3)
-                    merged_index_ma4 = create_index_table(merged_prices_ma4)
+                    merged_index_orig = create_index_table(merged_prices_orig, prop_type)
+                    merged_index_ma2 = create_index_table(merged_prices_ma2, prop_type)
+                    merged_index_ma3 = create_index_table(merged_prices_ma3, prop_type)
+                    merged_index_ma4 = create_index_table(merged_prices_ma4, prop_type)
                 
                 st.success(f"✅ Merged analysis generated for: **{merge_name}** ({', '.join(merge_regions_selected)})")
+                
+                # Set base period based on property type
+                base_period = "2021-Q1" if prop_type == 'Agricultural land' else "2020-Q1"
                 
                 if prop_type == 'Agricultural land':
                     method_label = "Land_EUR_m2" if use_total else "Calculated (Price ÷ Sold Area)"
@@ -1953,13 +1969,13 @@ def main():
                             fig = plot_regions(
                                 comparison_df,
                                 f"Comparison: {merge_name} vs Individual Regions ({ma_label})",
-                                "Index (2020-Q1 = 1.0)"
+                                f"Index ({base_period} = 1.0)"
                             )
                         else:
                             fig = plot_regions(
                                 merged_index,
                                 f"{merge_name} - Price Index ({ma_label})",
-                                "Index (2020-Q1 = 1.0)"
+                                f"Index ({base_period} = 1.0)"
                             )
                         
                         st.plotly_chart(fig, use_container_width=True)
