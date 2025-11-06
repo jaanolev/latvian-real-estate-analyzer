@@ -1,0 +1,101 @@
+main idea:
+I need to develope real estate indexes for Latvian Houses and apartments. I will start with houses. For this I have put together a csv file for houses.
+I want to make a simple but nice webapp that would allow me to analyse the indices, see plots, merge segments etc.. Here is what I have in mind:
+1) I (the user) will be able to apply filters for the data based on the columns in the csv. Make sure they are easy to use and robust:
+Column: Category
+Data Type: object
+Example Values: ['Zeme Būve', 'Zeme Būve']
+------------------------------
+Column: Address
+Data Type: object
+Example Values: ['Priekules iela 14A, Liepāja', 'Svitenes iela 3, Jūrmala']
+------------------------------
+Column: Record
+Data Type: object
+Example Values: ['D', 'D']
+------------------------------
+Column: Date
+Data Type: datetime64[ns]
+Example Values: [Timestamp('2023-01-27 00:00:00'), Timestamp('2018-02-21 00:00:00')]
+------------------------------
+Column: Year
+Data Type: int32
+Example Values: [2016, 2024]
+------------------------------
+Column: Sold_Area_m2
+Data Type: object
+Example Values: ['322', '289']
+------------------------------
+Column: Total_Area_m2
+Data Type: object
+Example Values: ['404', '176']
+------------------------------
+Column: Price_EUR
+Data Type: object
+Example Values: ['1 624', '1 031']
+------------------------------
+Column: Land_m2
+Data Type: float64
+Example Values: [nan, nan]
+------------------------------
+Column: Total_EUR_m2
+Data Type: object
+Example Values: ['2 000', '15 000']
+------------------------------
+Column: Interior_Area_m2
+Data Type: object
+Example Values: ['252', '450']
+------------------------------
+Column: Type
+Data Type: object
+Example Values: ['Privātmāja', 'Privātmāja']
+------------------------------
+Column: Finishing
+Data Type: float64
+Example Values: [nan, nan]
+------------------------------
+Column: Dom_Parts
+Data Type: object
+Example Values: ['1/1', '1/1']
+------------------------------
+Column: region_with_riga
+Data Type: object
+Example Values: ['Kurzeme', 'Pierīga']
+------------------------------
+Column: region_riga_separate
+Data Type: object
+Example Values: ['Pierīga', 'Vidzeme']
+------------------------------
+Column: municipality
+Data Type: object
+Example Values: ['rēzeknes nov', 'ķekavas nov']
+------------------------------
+Column: Quarter
+Data Type: int32
+Example Values: [4, 2]
+------------------------------
+
+2) Main function is to "Generate tables" based on the dataset and filters applyd. It will produce the following tabs: summary page(descriptive and stuff), prices (4 tabs), counts tab (1), indexes tab (4). 
+The prices tabs are one for original price (quarterly price), one for where every quarter is an average of that quarter and the quarter before it, of with 3 quarters (moving average) and one with 4 quarters moving average.
+
+The counts tab just has the counts by region_riga_separate and quarters. 
+
+The 4 index tabs each corresponds to a prices tab. The Index is calculated such that the year 2020 1st quarter is the index = 1 for all regions and for example the 2nd quarter of 2020 would have index value that comes from dividing 2020 1st quarter price with the 2020 2nd quarter price you know and so fort h and backwards.
+
+Every tab is showing data by regions (column "region_riga_separate" values on the left going vertically) and quarters going horisontally to the right.
+
+So the tabs aggregate the data into regions and quarters.
+
+The "prices" tabs doesnt actually have prices, but average prices per area using columns: Sold_Area_m2 and Price_EUR!
+
+
+3) Under every tabs table is a lineplot showing how the regions values (average price per m2 or indexes or counts) move. User can toggle which regions (by "region_riga_separate") they want to see on the plot, and also what date range using slider.
+
+4) Under the plots User can merge regions together and see the merged results as tables and plots aswell under the same tab but just abit below you know.. For example in order to see merged index for 3 regions then would have to I guess sum up prices and areas again orsmth idk.. you know.
+
+5) can generate excel report as exportable result.
+
+
+
+
+
