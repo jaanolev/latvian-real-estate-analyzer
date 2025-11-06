@@ -154,6 +154,73 @@ def create_index_table(prices_pivot, base_year=2020, base_quarter=1):
     
     return index_df
 
+def detect_outliers(df, use_total_eur_m2=False, method="IQR Method (1.5x)", 
+                   lower_percentile=None, upper_percentile=None,
+                   per_region=False, per_quarter=False):
+    """
+    Detect outliers based on price per m² distribution
+    Returns a boolean mask where True = keep, False = outlier
+    """
+    # Calculate price per m²
+    df_temp = calculate_price_per_m2(df.copy(), use_total_eur_m2)
+    
+    # Determine which price column to use
+    if use_total_eur_m2:
+        price_col = 'Total_EUR_m2'
+    else:
+        price_col = 'Price_per_m2'
+    
+    # Filter out invalid prices
+    valid_mask = df_temp[price_col].notna() & (df_temp[price_col] > 0)
+    
+    # Initialize mask - all True (keep all)
+    keep_mask = pd.Series(True, index=df.index)
+    
+    # Determine grouping
+    if per_region and per_quarter:
+        groups = df_temp.groupby(['region_riga_separate', 'Year', 'Quarter'])
+    elif per_region:
+        groups = df_temp.groupby(['region_riga_separate'])
+    elif per_quarter:
+        groups = df_temp.groupby(['Year', 'Quarter'])
+    else:
+        # Global outlier detection
+        groups = [(None, df_temp)]
+    
+    # Apply outlier detection
+    for group_key, group_df in groups:
+        group_prices = group_df[price_col].dropna()
+        
+        if len(group_prices) < 10:  # Skip if too few data points
+            continue
+        
+        if "Percentile" in method:
+            # Percentile method
+            lower_bound = group_prices.quantile(lower_percentile / 100.0)
+            upper_bound = group_prices.quantile(upper_percentile / 100.0)
+        else:
+            # IQR method
+            Q1 = group_prices.quantile(0.25)
+            Q3 = group_prices.quantile(0.75)
+            IQR = Q3 - Q1
+            
+            if "3.0x" in method:
+                multiplier = 3.0
+            else:
+                multiplier = 1.5
+            
+            lower_bound = Q1 - multiplier * IQR
+            upper_bound = Q3 + multiplier * IQR
+        
+        # Mark outliers in this group
+        group_outliers = (group_df[price_col] < lower_bound) | (group_df[price_col] > upper_bound)
+        keep_mask.loc[group_df.index] = ~group_outliers
+    
+    # Keep rows with invalid prices (don't mark as outliers, let other logic handle)
+    keep_mask = keep_mask | ~valid_mask
+    
+    return keep_mask
+
 def plot_regions(df_pivot, title, yaxis_title, selected_regions=None, date_range=None):
     """Create interactive line plot"""
     fig = go.Figure()
@@ -558,6 +625,68 @@ def main():
         if duplicate_method != "Keep all (no filtering)":
             st.caption("ℹ️ Duplicates will be removed before analysis (keeping first occurrence)")
     
+    # Outlier Detection
+    with st.sidebar.expander("🎯 Outlier Detection & Removal", expanded=False):
+        st.write("**Remove Statistical Outliers**")
+        st.caption("Filter extreme values based on price per m² distribution")
+        
+        enable_outlier_filter = st.checkbox(
+            "Enable outlier filtering",
+            value=False,
+            key="enable_outlier_filter",
+            help="Remove transactions with extreme price per m² values"
+        )
+        
+        if enable_outlier_filter:
+            outlier_method = st.radio(
+                "Detection method:",
+                options=[
+                    "IQR Method (1.5x)",
+                    "IQR Method (3.0x - strict)",
+                    "Percentile Method"
+                ],
+                index=0,
+                help="IQR = Interquartile Range. Standard box plot method for outlier detection."
+            )
+            
+            if "Percentile" in outlier_method:
+                col1, col2 = st.columns(2)
+                with col1:
+                    lower_percentile = st.slider(
+                        "Lower %",
+                        min_value=0.0,
+                        max_value=10.0,
+                        value=1.0,
+                        step=0.5,
+                        format="%.1f%%"
+                    )
+                with col2:
+                    upper_percentile = st.slider(
+                        "Upper %",
+                        min_value=90.0,
+                        max_value=100.0,
+                        value=99.0,
+                        step=0.5,
+                        format="%.1f%%"
+                    )
+            else:
+                lower_percentile = None
+                upper_percentile = None
+            
+            apply_per_region = st.checkbox(
+                "Apply per region separately",
+                value=False,
+                help="Calculate outliers for each region independently (more granular)"
+            )
+            
+            apply_per_quarter = st.checkbox(
+                "Apply per quarter separately",
+                value=False,
+                help="Calculate outliers for each quarter independently (identify temporal anomalies)"
+            )
+            
+            st.caption("⚠️ Outliers will be removed from ALL tabs (Prices, Counts, Index)")
+    
     # Reset filters button
     st.sidebar.markdown("---")
     if st.sidebar.button("🔄 Reset All Filters", use_container_width=True):
@@ -633,6 +762,23 @@ def main():
     if selected_categories:
         df_filtered = df_filtered[df_filtered['Category'].isin(selected_categories)]
     
+    # Outlier removal
+    records_before_outlier = len(df_filtered)
+    outliers_removed = 0
+    
+    if enable_outlier_filter:
+        outlier_mask = detect_outliers(
+            df_filtered,
+            use_total_eur_m2=use_total_eur_m2,
+            method=outlier_method,
+            lower_percentile=lower_percentile,
+            upper_percentile=upper_percentile,
+            per_region=apply_per_region,
+            per_quarter=apply_per_quarter
+        )
+        df_filtered = df_filtered[outlier_mask]
+        outliers_removed = records_before_outlier - len(df_filtered)
+    
     # Duplicate removal
     records_before_dedup = len(df_filtered)
     if duplicate_method == "Remove exact duplicates":
@@ -676,6 +822,18 @@ def main():
         st.info(f"📈 Filtered to {len(df_filtered):,} records | Active filters: {' • '.join(filter_summary)}")
     else:
         st.info(f"📈 Showing all {len(df_filtered):,} records (no filters applied)")
+    
+    # Show outlier removal summary
+    if outliers_removed > 0:
+        outlier_pct = (outliers_removed / records_before_outlier * 100)
+        grouping_desc = []
+        if apply_per_region:
+            grouping_desc.append("per region")
+        if apply_per_quarter:
+            grouping_desc.append("per quarter")
+        grouping_text = " + ".join(grouping_desc) if grouping_desc else "globally"
+        
+        st.warning(f"🎯 **Outliers Removed:** {outliers_removed:,} statistical outliers removed ({outlier_pct:.1f}% of filtered data) using {outlier_method} ({grouping_text})")
     
     # Show duplicate removal summary
     if records_removed > 0:
