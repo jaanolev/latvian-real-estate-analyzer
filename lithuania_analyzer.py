@@ -62,11 +62,8 @@ def create_region_mapping():
         '12 region': '12 - Other municipalities'
     }
 
-def create_index_table_lt(df, base_year=2021, base_quarter=1, price_metric='Price_weighted'):
-    """Create index table with base period"""
-    base_col = f'{base_year}-Q{base_quarter}'
-    
-    # Pivot the data
+def create_prices_table_lt(df, price_metric='Price_weighted', ma_quarters=1):
+    """Create prices pivot table with optional moving average"""
     pivot = df.pivot_table(
         index='Region',
         columns='YearQuarter',
@@ -74,14 +71,37 @@ def create_index_table_lt(df, base_year=2021, base_quarter=1, price_metric='Pric
         aggfunc='first'
     )
     
-    if base_col not in pivot.columns:
+    if ma_quarters > 1:
+        # Apply moving average across columns
+        pivot = pivot.rolling(window=ma_quarters, axis=1, min_periods=1).mean()
+    
+    return pivot
+
+def create_index_table_lt(df, base_year=2021, base_quarter=1, price_metric='Price_weighted', ma_quarters=1):
+    """Create index table with base period and optional moving average"""
+    # First create prices table with MA if needed
+    prices_pivot = create_prices_table_lt(df, price_metric, ma_quarters)
+    
+    base_col = f'{base_year}-Q{base_quarter}'
+    
+    if base_col not in prices_pivot.columns:
         st.warning(f"Base period {base_col} not found in data")
-        return pivot
+        return prices_pivot
     
     # Divide all values by the base column
-    index_df = pivot.div(pivot[base_col], axis=0)
+    index_df = prices_pivot.div(prices_pivot[base_col], axis=0)
     
     return index_df
+
+def calculate_changes_lt(df_pivot):
+    """Calculate quarter-over-quarter and year-over-year changes"""
+    # QoQ change
+    qoq_change = df_pivot.pct_change(axis=1) * 100
+    
+    # YoY change (4 quarters back)
+    yoy_change = df_pivot.pct_change(periods=4, axis=1) * 100
+    
+    return qoq_change, yoy_change
 
 def plot_regions_lt(df_pivot, title, yaxis_title, selected_regions=None, date_range=None):
     """Create interactive line plot for Lithuania data"""
@@ -121,25 +141,38 @@ def plot_regions_lt(df_pivot, title, yaxis_title, selected_regions=None, date_ra
     
     return fig
 
-def export_to_excel_lt(prices_df, counts_df, index_df, property_type):
-    """Export Lithuania tables to Excel"""
+def export_to_excel_lt(prices_tables, counts_df, area_df, index_tables, qoq_change, yoy_change, property_type):
+    """Export Lithuania tables to Excel with multiple moving averages"""
     output = io.BytesIO()
     
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        # Write prices
-        prices_df.to_excel(writer, sheet_name='Prices')
+        # Write prices with different MA levels
+        for i, prices_df in enumerate(prices_tables):
+            sheet_name = f'Prices_MA{i+1}' if i > 0 else 'Prices_Original'
+            prices_df.to_excel(writer, sheet_name=sheet_name)
         
         # Write counts
         counts_df.to_excel(writer, sheet_name='Counts')
         
-        # Write index
-        index_df.to_excel(writer, sheet_name='Index')
+        # Write area
+        area_df.to_excel(writer, sheet_name='Area')
+        
+        # Write indices with different MA levels
+        for i, index_df in enumerate(index_tables):
+            sheet_name = f'Index_MA{i+1}' if i > 0 else 'Index_Original'
+            index_df.to_excel(writer, sheet_name=sheet_name)
+        
+        # Write changes
+        qoq_change.to_excel(writer, sheet_name='QoQ_Changes')
+        yoy_change.to_excel(writer, sheet_name='YoY_Changes')
         
         # Add metadata sheet
         metadata = pd.DataFrame({
             'Property Type': [property_type],
             'Report Date': [datetime.now().strftime('%Y-%m-%d %H:%M:%S')],
-            'Data Source': ['Bigbank Lithuania Q2 2025']
+            'Data Source': ['Bigbank Lithuania Q2 2025'],
+            'Sheets': ['Prices (4), Counts, Area, Index (4), Changes (2), Metadata'],
+            'Total Sheets': [13]
         })
         metadata.to_excel(writer, sheet_name='Metadata', index=False)
     
@@ -305,13 +338,11 @@ def lithuania_analyzer():
     # Generate analysis button
     if st.button("🚀 Generate Analysis", type="primary", use_container_width=True, key="lt_generate"):
         with st.spinner("Generating analysis..."):
-            # Create pivot tables for prices
-            prices_df = df_filtered.pivot_table(
-                index='Region',
-                columns='YearQuarter',
-                values=price_metric,
-                aggfunc='first'
-            )
+            # Create pivot tables for prices with different moving averages
+            prices_original = create_prices_table_lt(df_filtered, price_metric, ma_quarters=1)
+            prices_ma2 = create_prices_table_lt(df_filtered, price_metric, ma_quarters=2)
+            prices_ma3 = create_prices_table_lt(df_filtered, price_metric, ma_quarters=3)
+            prices_ma4 = create_prices_table_lt(df_filtered, price_metric, ma_quarters=4)
             
             # Create pivot table for counts
             counts_df = df_filtered.pivot_table(
@@ -331,14 +362,22 @@ def lithuania_analyzer():
                 fill_value=0
             )
             
-            # Calculate index
-            index_df = create_index_table_lt(df_filtered, base_year, base_quarter, price_metric)
+            # Calculate indices with different moving averages
+            index_original = create_index_table_lt(df_filtered, base_year, base_quarter, price_metric, ma_quarters=1)
+            index_ma2 = create_index_table_lt(df_filtered, base_year, base_quarter, price_metric, ma_quarters=2)
+            index_ma3 = create_index_table_lt(df_filtered, base_year, base_quarter, price_metric, ma_quarters=3)
+            index_ma4 = create_index_table_lt(df_filtered, base_year, base_quarter, price_metric, ma_quarters=4)
+            
+            # Calculate changes (QoQ and YoY)
+            qoq_change, yoy_change = calculate_changes_lt(prices_original)
             
             # Store in session state
-            st.session_state['lt_prices_df'] = prices_df
+            st.session_state['lt_prices_tables'] = [prices_original, prices_ma2, prices_ma3, prices_ma4]
             st.session_state['lt_counts_df'] = counts_df
             st.session_state['lt_area_df'] = area_df
-            st.session_state['lt_index_df'] = index_df
+            st.session_state['lt_index_tables'] = [index_original, index_ma2, index_ma3, index_ma4]
+            st.session_state['lt_qoq_change'] = qoq_change
+            st.session_state['lt_yoy_change'] = yoy_change
             st.session_state['lt_df_filtered'] = df_filtered
             st.session_state['lt_region_map'] = region_map
             st.session_state['lt_property_type'] = property_type
@@ -349,32 +388,45 @@ def lithuania_analyzer():
         st.success("✅ Analysis generated!")
     
     # Display results if analysis is generated
-    if 'lt_prices_df' in st.session_state:
+    if 'lt_prices_tables' in st.session_state:
         st.markdown("---")
         st.header(f"📊 Results - {st.session_state['lt_property_type']}")
         
-        prices_df = st.session_state['lt_prices_df']
+        prices_tables = st.session_state['lt_prices_tables']
         counts_df = st.session_state['lt_counts_df']
         area_df = st.session_state['lt_area_df']
-        index_df = st.session_state['lt_index_df']
+        index_tables = st.session_state['lt_index_tables']
+        qoq_change = st.session_state['lt_qoq_change']
+        yoy_change = st.session_state['lt_yoy_change']
         region_map = st.session_state['lt_region_map']
         price_metric_name = st.session_state['lt_price_metric']
         base_yr = st.session_state['lt_base_year']
         base_qt = st.session_state['lt_base_quarter']
         
-        # Replace region codes with descriptive names
-        prices_df.index = prices_df.index.map(lambda x: region_map.get(x, x))
+        # Replace region codes with descriptive names for all tables
+        for i in range(len(prices_tables)):
+            prices_tables[i].index = prices_tables[i].index.map(lambda x: region_map.get(x, x))
+        for i in range(len(index_tables)):
+            index_tables[i].index = index_tables[i].index.map(lambda x: region_map.get(x, x))
         counts_df.index = counts_df.index.map(lambda x: region_map.get(x, x))
         area_df.index = area_df.index.map(lambda x: region_map.get(x, x))
-        index_df.index = index_df.index.map(lambda x: region_map.get(x, x))
+        qoq_change.index = qoq_change.index.map(lambda x: region_map.get(x, x))
+        yoy_change.index = yoy_change.index.map(lambda x: region_map.get(x, x))
         
         # Create tabs
         tab_names = [
             "Summary",
-            "Prices",
+            "Prices - Original",
+            "Prices - MA2",
+            "Prices - MA3",
+            "Prices - MA4",
             "Transaction Counts",
             "Total Area",
-            "Price Index",
+            "Index - Original",
+            "Index - MA2",
+            "Index - MA3",
+            "Index - MA4",
+            "Changes (QoQ & YoY)",
             "Regional Comparison"
         ]
         
@@ -392,10 +444,11 @@ def lithuania_analyzer():
             
             st.caption(f"📊 Using: **{metric_label}**")
             
-            # Calculate summary statistics
+            # Calculate summary statistics using original prices (first table)
+            prices_orig = prices_tables[0]
             summary_data = []
-            for region in prices_df.index:
-                region_prices = prices_df.loc[region].dropna()
+            for region in prices_orig.index:
+                region_prices = prices_orig.loc[region].dropna()
                 region_counts = counts_df.loc[region].sum()
                 region_area = area_df.loc[region].sum()
                 
@@ -416,7 +469,7 @@ def lithuania_analyzer():
             # Key insights
             st.markdown("### 🔑 Key Insights")
             
-            col1, col2, col3 = st.columns(3)
+            col1, col2, col3, col4 = st.columns(4)
             
             with col1:
                 total_transactions = int(counts_df.sum().sum())
@@ -427,52 +480,61 @@ def lithuania_analyzer():
                 st.metric("Total Area Acquired", f"{total_area:,.0f} m²")
             
             with col3:
-                avg_price_latest = prices_df.iloc[:, -1].mean()
-                st.metric("Average Price/m² (Latest)", f"€{avg_price_latest:.2f}")
+                avg_price_latest = prices_orig.iloc[:, -1].mean()
+                st.metric("Avg Price/m² (Latest)", f"€{avg_price_latest:.2f}")
+            
+            with col4:
+                # Calculate average YoY change for latest quarter
+                latest_yoy = yoy_change.iloc[:, -1].mean()
+                st.metric("Avg YoY Change", f"{latest_yoy:.1f}%")
         
-        # Prices tab
-        with tabs[1]:
-            st.subheader(f"💰 Price per m² - {metric_label}")
-            
-            st.dataframe(prices_df.round(2), use_container_width=True, height=400)
-            
-            # Plot
-            st.markdown("#### 📉 Interactive Plot")
-            
-            col1, col2 = st.columns([2, 1])
-            
-            with col1:
-                available_regions = list(prices_df.index)
-                plot_regions_selected = st.multiselect(
-                    "Select regions to display",
-                    available_regions,
-                    default=available_regions,
-                    key="lt_prices_plot_regions"
-                )
-            
-            with col2:
-                available_quarters = list(prices_df.columns)
-                if len(available_quarters) > 1:
-                    date_range_plot = st.select_slider(
-                        "Date range",
-                        options=available_quarters,
-                        value=(available_quarters[0], available_quarters[-1]),
-                        key="lt_prices_date_range"
+        # Prices tabs (4 levels: Original, MA2, MA3, MA4)
+        for i in range(4):
+            with tabs[i+1]:
+                ma_label = f"Moving Average ({i+1} Quarter{'s' if i > 0 else ''})" if i > 0 else "Original"
+                st.subheader(f"💰 Price per m² - {ma_label}")
+                st.caption(f"📊 Using: **{metric_label}**")
+                
+                prices_df_ma = prices_tables[i]
+                st.dataframe(prices_df_ma.round(2), use_container_width=True, height=400)
+                
+                # Plot
+                st.markdown("#### 📉 Interactive Plot")
+                
+                col1, col2 = st.columns([2, 1])
+                
+                with col1:
+                    available_regions = list(prices_df_ma.index)
+                    plot_regions_selected = st.multiselect(
+                        "Select regions to display",
+                        available_regions,
+                        default=available_regions,
+                        key=f"lt_prices_plot_regions_ma{i}"
                     )
-                else:
-                    date_range_plot = None
-            
-            fig = plot_regions_lt(
-                prices_df,
-                f"Price per m² Over Time - {st.session_state['lt_property_type']}",
-                "Price per m² (EUR)",
-                selected_regions=plot_regions_selected,
-                date_range=date_range_plot if len(available_quarters) > 1 else None
-            )
-            st.plotly_chart(fig, use_container_width=True)
+                
+                with col2:
+                    available_quarters = list(prices_df_ma.columns)
+                    if len(available_quarters) > 1:
+                        date_range_plot = st.select_slider(
+                            "Date range",
+                            options=available_quarters,
+                            value=(available_quarters[0], available_quarters[-1]),
+                            key=f"lt_prices_date_range_ma{i}"
+                        )
+                    else:
+                        date_range_plot = None
+                
+                fig = plot_regions_lt(
+                    prices_df_ma,
+                    f"Price per m² Over Time - {ma_label}",
+                    "Price per m² (EUR)",
+                    selected_regions=plot_regions_selected,
+                    date_range=date_range_plot if len(available_quarters) > 1 else None
+                )
+                st.plotly_chart(fig, use_container_width=True)
         
         # Counts tab
-        with tabs[2]:
+        with tabs[5]:
             st.subheader("📊 Transaction Counts by Region and Quarter")
             
             st.dataframe(counts_df.astype(int), use_container_width=True, height=400)
@@ -513,7 +575,7 @@ def lithuania_analyzer():
             st.plotly_chart(fig, use_container_width=True)
         
         # Area tab
-        with tabs[3]:
+        with tabs[6]:
             st.subheader("📏 Total Acquired Area by Region and Quarter")
             
             st.dataframe(area_df.round(2), use_container_width=True, height=400)
@@ -553,57 +615,104 @@ def lithuania_analyzer():
             )
             st.plotly_chart(fig, use_container_width=True)
         
-        # Index tab
-        with tabs[4]:
-            st.subheader(f"📈 Price Index (Base: {base_yr}-Q{base_qt} = 1.0)")
+        # Index tabs (4 levels: Original, MA2, MA3, MA4)
+        for i in range(4):
+            with tabs[i+7]:
+                ma_label = f"Moving Average ({i+1} Quarter{'s' if i > 0 else ''})" if i > 0 else "Original"
+                st.subheader(f"📈 Price Index (Base: {base_yr}-Q{base_qt} = 1.0) - {ma_label}")
+                st.caption(f"📊 Using: **{metric_label}**")
+                
+                index_df_ma = index_tables[i]
+                st.dataframe(index_df_ma.round(4), use_container_width=True, height=400)
+                
+                # Plot
+                st.markdown("#### 📉 Interactive Plot")
+                
+                col1, col2 = st.columns([2, 1])
+                
+                with col1:
+                    available_regions = list(index_df_ma.index)
+                    plot_regions_selected = st.multiselect(
+                        "Select regions to display",
+                        available_regions,
+                        default=available_regions,
+                        key=f"lt_index_plot_regions_ma{i}"
+                    )
+                
+                with col2:
+                    available_quarters = list(index_df_ma.columns)
+                    if len(available_quarters) > 1:
+                        date_range_plot = st.select_slider(
+                            "Date range",
+                            options=available_quarters,
+                            value=(available_quarters[0], available_quarters[-1]),
+                            key=f"lt_index_date_range_ma{i}"
+                        )
+                    else:
+                        date_range_plot = None
+                
+                fig = plot_regions_lt(
+                    index_df_ma,
+                    f"Price Index Over Time - {ma_label}",
+                    f"Index ({base_yr}-Q{base_qt} = 1.0)",
+                    selected_regions=plot_regions_selected,
+                    date_range=date_range_plot if len(available_quarters) > 1 else None
+                )
+                st.plotly_chart(fig, use_container_width=True)
+        
+        # Changes (QoQ & YoY) tab - NEW!
+        with tabs[11]:
+            st.subheader("📊 Quarter-over-Quarter & Year-over-Year Changes")
+            st.caption("Percentage changes in prices over time")
             
-            st.dataframe(index_df.round(4), use_container_width=True, height=400)
-            
-            # Plot
-            st.markdown("#### 📉 Interactive Plot")
-            
-            col1, col2 = st.columns([2, 1])
+            col1, col2 = st.columns(2)
             
             with col1:
-                available_regions = list(index_df.index)
-                plot_regions_selected = st.multiselect(
-                    "Select regions to display",
-                    available_regions,
-                    default=available_regions,
-                    key="lt_index_plot_regions"
-                )
+                st.markdown("#### 📈 Quarter-over-Quarter (QoQ)")
+                st.caption("Change vs. previous quarter")
+                # Format for display
+                qoq_display = qoq_change.round(2).copy()
+                for col in qoq_display.columns:
+                    qoq_display[col] = qoq_display[col].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "")
+                st.dataframe(qoq_display, use_container_width=True, height=300)
             
             with col2:
-                available_quarters = list(index_df.columns)
-                if len(available_quarters) > 1:
-                    date_range_plot = st.select_slider(
-                        "Date range",
-                        options=available_quarters,
-                        value=(available_quarters[0], available_quarters[-1]),
-                        key="lt_index_date_range"
-                    )
-                else:
-                    date_range_plot = None
+                st.markdown("#### 📅 Year-over-Year (YoY)")
+                st.caption("Change vs. same quarter last year")
+                # Format for display
+                yoy_display = yoy_change.round(2).copy()
+                for col in yoy_display.columns:
+                    yoy_display[col] = yoy_display[col].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "")
+                st.dataframe(yoy_display, 
+                           use_container_width=True, height=300)
             
-            fig = plot_regions_lt(
-                index_df,
-                f"Price Index Over Time - {st.session_state['lt_property_type']}",
-                f"Index ({base_yr}-Q{base_qt} = 1.0)",
-                selected_regions=plot_regions_selected,
-                date_range=date_range_plot if len(available_quarters) > 1 else None
-            )
-            st.plotly_chart(fig, use_container_width=True)
+            # Latest changes summary
+            st.markdown("#### 🔑 Latest Changes Summary")
+            latest_qoq = qoq_change.iloc[:, -1].dropna()
+            latest_yoy = yoy_change.iloc[:, -1].dropna()
+            
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("Avg QoQ", f"{latest_qoq.mean():.2f}%")
+            with col2:
+                st.metric("Avg YoY", f"{latest_yoy.mean():.2f}%")
+            with col3:
+                st.metric("Max YoY Gain", f"{latest_yoy.max():.2f}%")
+            with col4:
+                best_region = latest_yoy.idxmax()
+                st.metric("Best Performer", best_region.split(' - ')[0])
         
         # Regional Comparison tab
-        with tabs[5]:
+        with tabs[12]:
             st.subheader("🔀 Regional Comparison")
             
             st.markdown("#### Compare Latest vs Initial Prices")
             
-            # Calculate price changes
+            # Calculate price changes using original prices
+            prices_orig = prices_tables[0]
             comparison_data = []
-            for region in prices_df.index:
-                region_prices = prices_df.loc[region].dropna()
+            for region in prices_orig.index:
+                region_prices = prices_orig.loc[region].dropna()
                 if len(region_prices) > 1:
                     initial = region_prices.iloc[0]
                     latest = region_prices.iloc[-1]
@@ -666,9 +775,12 @@ def lithuania_analyzer():
         if st.button("📊 Generate Excel Report", type="secondary", key="lt_export"):
             with st.spinner("Generating Excel report..."):
                 excel_data = export_to_excel_lt(
-                    prices_df,
-                    counts_df,
-                    index_df,
+                    st.session_state['lt_prices_tables'],
+                    st.session_state['lt_counts_df'],
+                    st.session_state['lt_area_df'],
+                    st.session_state['lt_index_tables'],
+                    st.session_state['lt_qoq_change'],
+                    st.session_state['lt_yoy_change'],
                     st.session_state['lt_property_type']
                 )
                 
