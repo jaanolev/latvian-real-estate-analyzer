@@ -103,6 +103,66 @@ def calculate_changes_lt(df_pivot):
     
     return qoq_change, yoy_change
 
+def detect_outliers_lt(df, price_metric='Price_weighted', method="IQR Method (1.5x)", 
+                       lower_percentile=None, upper_percentile=None, per_region=True):
+    """
+    Detect outlier quarters based on price distribution
+    Returns a boolean mask where True = keep, False = outlier (remove)
+    
+    Note: For aggregated data, this identifies unusual quarters, not transactions
+    """
+    # Create a mask - True = keep, False = remove
+    keep_mask = pd.Series(True, index=df.index)
+    
+    # Get prices
+    prices = df[price_metric].copy()
+    
+    # Filter valid prices
+    valid_mask = prices.notna() & (prices > 0)
+    
+    if not valid_mask.any():
+        return keep_mask
+    
+    # Determine grouping
+    if per_region:
+        groups = df[valid_mask].groupby('Region')
+    else:
+        # Global - treat all data as one group
+        groups = [('global', df[valid_mask])]
+    
+    # Apply outlier detection to each group
+    for group_key, group_df in groups:
+        group_prices = group_df[price_metric]
+        
+        if len(group_prices) < 4:  # Need at least 4 quarters
+            continue
+        
+        if "Percentile" in method:
+            # Percentile method
+            lower_bound = group_prices.quantile(lower_percentile / 100.0)
+            upper_bound = group_prices.quantile(upper_percentile / 100.0)
+        else:
+            # IQR method
+            Q1 = group_prices.quantile(0.25)
+            Q3 = group_prices.quantile(0.75)
+            IQR = Q3 - Q1
+            
+            if "3.0x" in method:
+                multiplier = 3.0
+            else:
+                multiplier = 1.5
+            
+            lower_bound = Q1 - multiplier * IQR
+            upper_bound = Q3 + multiplier * IQR
+        
+        # Identify outliers in this group
+        is_outlier = (group_prices < lower_bound) | (group_prices > upper_bound)
+        
+        # Mark as False (remove) in keep_mask
+        keep_mask.loc[is_outlier[is_outlier].index] = False
+    
+    return keep_mask
+
 def plot_regions_lt(df_pivot, title, yaxis_title, selected_regions=None, date_range=None):
     """Create interactive line plot for Lithuania data"""
     fig = go.Figure()
@@ -295,6 +355,62 @@ def lithuania_analyzer():
             help="Filter out quarters with too few transactions"
         )
     
+    # Outlier Detection
+    with st.sidebar.expander("🎯 Outlier Detection & Removal", expanded=False):
+        st.write("**Remove Statistical Outliers**")
+        st.caption("Filter unusual quarters based on price distribution")
+        
+        enable_outlier_filter = st.checkbox(
+            "Enable outlier filtering",
+            value=False,
+            key="lt_enable_outlier_filter",
+            help="Remove quarters with extreme price per m² values"
+        )
+        
+        if enable_outlier_filter:
+            outlier_method = st.radio(
+                "Detection method:",
+                options=[
+                    "IQR Method (1.5x - standard)",
+                    "IQR Method (3.0x - lenient)",
+                    "Percentile Method"
+                ],
+                index=0,
+                help="IQR = Interquartile Range. 1.5x removes more outliers, 3.0x only extreme ones"
+            )
+            
+            if "Percentile" in outlier_method:
+                col1, col2 = st.columns(2)
+                with col1:
+                    lower_percentile = st.slider(
+                        "Lower %",
+                        min_value=0.0,
+                        max_value=10.0,
+                        value=1.0,
+                        step=0.5,
+                        format="%.1f%%"
+                    )
+                with col2:
+                    upper_percentile = st.slider(
+                        "Upper %",
+                        min_value=90.0,
+                        max_value=100.0,
+                        value=99.0,
+                        step=0.5,
+                        format="%.1f%%"
+                    )
+            else:
+                lower_percentile = None
+                upper_percentile = None
+            
+            apply_per_region = st.checkbox(
+                "Apply per region separately",
+                value=True,
+                help="Calculate outliers for each region independently (recommended)"
+            )
+            
+            st.caption("⚠️ Outlier quarters will be removed from analysis")
+    
     # Reset button
     st.sidebar.markdown("---")
     if st.sidebar.button("🔄 Reset All Filters", use_container_width=True, key="lt_reset"):
@@ -319,6 +435,22 @@ def lithuania_analyzer():
     if min_count > 0:
         df_filtered = df_filtered[df_filtered['Count'] >= min_count]
     
+    # Outlier removal
+    records_before_outlier = len(df_filtered)
+    outliers_removed = 0
+    
+    if enable_outlier_filter:
+        outlier_mask = detect_outliers_lt(
+            df_filtered,
+            price_metric=price_metric,
+            method=outlier_method,
+            lower_percentile=lower_percentile,
+            upper_percentile=upper_percentile,
+            per_region=apply_per_region
+        )
+        df_filtered = df_filtered[outlier_mask]
+        outliers_removed = records_before_outlier - len(df_filtered)
+    
     # Display filter summary
     filter_summary = []
     if year_range != (min_year, max_year):
@@ -329,11 +461,24 @@ def lithuania_analyzer():
         filter_summary.append(f"Regions: {len(selected_regions)} selected")
     if min_count > 0:
         filter_summary.append(f"Min transactions: {min_count}")
+    if enable_outlier_filter:
+        filter_summary.append(f"Outlier filtering: {outlier_method}")
     
     if filter_summary:
         st.info(f"📈 Filtered to {len(df_filtered):,} records | Active filters: {' • '.join(filter_summary)}")
     else:
         st.info(f"📈 Showing all {len(df_filtered):,} records (no filters applied)")
+    
+    # Show outlier removal summary
+    if enable_outlier_filter:
+        if outliers_removed > 0:
+            outlier_pct = (outliers_removed / records_before_outlier * 100)
+            grouping_text = "per region" if apply_per_region else "globally"
+            
+            st.warning(f"🎯 **Outlier Quarters Removed:** {outliers_removed} quarters removed ({outlier_pct:.1f}% of data) using {outlier_method} ({grouping_text})")
+            st.caption(f"📊 Before outlier filter: {records_before_outlier} quarters | After: {len(df_filtered)} quarters")
+        else:
+            st.info(f"🎯 **Outlier Filter Active:** No outlier quarters detected using {outlier_method}")
     
     # Generate analysis button
     if st.button("🚀 Generate Analysis", type="primary", use_container_width=True, key="lt_generate"):
