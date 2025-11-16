@@ -7,7 +7,7 @@ import io
 
 # Page config
 st.set_page_config(
-    page_title="Latvian House Price Index Analyzer",
+    page_title="Baltic Real Estate Price Index Analyzer",
     page_icon="🏠",
     layout="wide"
 )
@@ -316,7 +316,34 @@ def export_to_excel(summary_stats, prices_tabs, counts_tab, index_tabs):
 
 # Main app
 def main():
-    st.title("🏠 Latvian Real Estate Price Index Analyzer")
+    st.title("🏠 Baltic Real Estate Price Index Analyzer")
+    
+    # Dataset/Country selector at the very top
+    st.markdown("### 🌍 Select Dataset")
+    dataset = st.radio(
+        "Choose which dataset to analyze:",
+        options=["Latvia - Detailed Transactions", "Lithuania - Bigbank Statistics"],
+        horizontal=True,
+        help="Switch between Latvian detailed transaction data and Lithuanian aggregated statistics from Bigbank",
+        key="dataset_selector"
+    )
+    
+    st.markdown("---")
+    
+    # Route to appropriate analyzer
+    if dataset == "Lithuania - Bigbank Statistics":
+        # Import and run Lithuania analyzer
+        try:
+            from lithuania_analyzer import lithuania_analyzer
+            lithuania_analyzer()
+            return
+        except Exception as e:
+            st.error(f"Error loading Lithuania analyzer: {e}")
+            st.info("Make sure 'lithuania_analyzer.py' and 'Bigbank_purchase transaction statistics_202506 Lithuania EN.xlsx' are in the same directory.")
+            return
+    
+    # Continue with Latvian analyzer
+    st.header("🇱🇻 Latvian Real Estate Price Index Analyzer")
     
     # Property type selector at the very top
     property_type = st.radio(
