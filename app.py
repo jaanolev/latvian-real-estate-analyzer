@@ -25,18 +25,22 @@ def load_data(property_type='Houses'):
     # Select the appropriate CSV file
     if property_type == 'Apartments':
         filename = 'LV_apartments_merged_mapped_unfiltered.csv'
+        df = pd.read_csv(filename, index_col=0)
     elif property_type == 'Agricultural land':
         filename = 'LV_agriland_merged_mapped_unfiltered.csv'
+        df = pd.read_csv(filename, index_col=0)
     elif property_type == 'Forest land':
         filename = 'LV_forestland_merged_mapped_unfiltered.csv'
+        df = pd.read_csv(filename, index_col=0)
     elif property_type == 'Other land':
         filename = 'LV_otherland_merged_mapped_unfiltered.csv'
+        df = pd.read_csv(filename, index_col=0)
     elif property_type == 'Premises':
         filename = 'Premises_all_data_merged_processed_20251117_004724.csv'
+        df = pd.read_csv(filename)  # No index_col for Premises
     else:
         filename = 'LV_houses_merged_mapped_unfiltered.csv'
-    
-    df = pd.read_csv(filename, index_col=0)
+        df = pd.read_csv(filename, index_col=0)
     
     # Clean numeric columns
     numeric_cols = ['Sold_Area_m2', 'Total_Area_m2', 'Price_EUR', 'Total_EUR_m2', 'Land_EUR_m2', 'Interior_Area_m2']
