@@ -189,7 +189,8 @@ def lithuania_analyzer():
             "Price_avg": "Arithmetic Average",
             "Price_median": "Median"
         }[x],
-        help="Weighted average accounts for transaction sizes"
+        help="Weighted average accounts for transaction sizes",
+        key="lt_price_metric_radio"
     )
     
     # Date filters
@@ -239,14 +240,14 @@ def lithuania_analyzer():
             "Base Year",
             options=available_years,
             index=0,
-            key="lt_base_year"
+            key="lt_base_year_select"
         )
         
         base_quarter = st.selectbox(
             "Base Quarter",
             options=[1, 2, 3, 4],
             format_func=lambda x: f"Q{x}",
-            key="lt_base_quarter"
+            key="lt_base_quarter_select"
         )
         
         st.caption(f"Index base: **{base_year}-Q{base_quarter} = 1.0**")
