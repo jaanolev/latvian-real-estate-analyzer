@@ -31,6 +31,8 @@ def load_data(property_type='Houses'):
         filename = 'LV_forestland_merged_mapped_unfiltered.csv'
     elif property_type == 'Other land':
         filename = 'LV_otherland_merged_mapped_unfiltered.csv'
+    elif property_type == 'Premises':
+        filename = 'Premises_all_data_merged_processed_20251117_004724.csv'
     else:
         filename = 'LV_houses_merged_mapped_unfiltered.csv'
     
@@ -348,9 +350,9 @@ def main():
     # Property type selector at the very top
     property_type = st.radio(
         "**Select Property Type:**",
-        options=["Houses", "Apartments", "Agricultural land", "Forest land", "Other land"],
+        options=["Houses", "Apartments", "Premises", "Agricultural land", "Forest land", "Other land"],
         horizontal=True,
-        help="Switch between houses, apartments, agricultural land, forest land, and other land analysis",
+        help="Switch between houses, apartments, premises, agricultural land, forest land, and other land analysis",
         key="property_type_selector"
     )
     
