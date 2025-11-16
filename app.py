@@ -160,12 +160,15 @@ def create_counts_table(df):
     return pivot
 
 def create_index_table(prices_pivot, property_type='Houses', base_year=None, base_quarter=None):
-    """Create index table with base period (2020-Q1 for Houses/Apartments, 2021-Q1 for Agricultural/Forest/Other land)"""
+    """Create index table with base period (2020-Q1 for Houses/Apartments, 2021-Q1 for Agricultural/Forest/Other land, 2022-Q2 for Premises)"""
     # Set default base period based on property type
     if base_year is None or base_quarter is None:
         if property_type in ['Agricultural land', 'Forest land', 'Other land']:
             base_year = 2021
             base_quarter = 1
+        elif property_type == 'Premises':
+            base_year = 2022
+            base_quarter = 2
         else:
             base_year = 2020
             base_quarter = 1
@@ -1172,7 +1175,12 @@ def main():
                 prop_type = st.session_state.get('property_type', 'Houses')
                 
                 # Set base period based on property type
-                base_period = "2021-Q1" if prop_type in ['Agricultural land', 'Forest land', 'Other land'] else "2020-Q1"
+                if prop_type in ['Agricultural land', 'Forest land', 'Other land']:
+                    base_period = "2021-Q1"
+                elif prop_type == 'Premises':
+                    base_period = "2022-Q2"
+                else:
+                    base_period = "2020-Q1"
                 st.subheader(f"📈 Price Index (Base: {base_period} = 1.0) - {ma_label}")
                 
                 if prop_type in ['Agricultural land', 'Forest land', 'Other land']:
@@ -1941,7 +1949,12 @@ def main():
                 st.success(f"✅ Merged analysis generated for: **{merge_name}** ({', '.join(merge_regions_selected)})")
                 
                 # Set base period based on property type
-                base_period = "2021-Q1" if prop_type in ['Agricultural land', 'Forest land', 'Other land'] else "2020-Q1"
+                if prop_type in ['Agricultural land', 'Forest land', 'Other land']:
+                    base_period = "2021-Q1"
+                elif prop_type == 'Premises':
+                    base_period = "2022-Q2"
+                else:
+                    base_period = "2020-Q1"
                 
                 if prop_type in ['Agricultural land', 'Forest land', 'Other land']:
                     method_label = "Land_EUR_m2" if use_total else "Calculated (Price ÷ Sold Area)"
