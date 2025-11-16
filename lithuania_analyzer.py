@@ -804,6 +804,155 @@ def lithuania_analyzer():
                     date_range=date_range_plot if len(available_quarters) > 1 else None
                 )
                 st.plotly_chart(fig, use_container_width=True)
+                
+                # Outlier Comparison Section
+                st.markdown("---")
+                st.markdown("### 🔬 Index Comparison with Outlier Filtering")
+                st.caption("Apply additional outlier filtering to see how it affects the index - without changing your main tables")
+                
+                # Outlier controls
+                col1, col2, col3 = st.columns([1, 1, 1])
+                
+                with col1:
+                    enable_comparison_outlier = st.checkbox(
+                        "Enable outlier filtering for comparison",
+                        value=False,
+                        key=f"lt_enable_comparison_outlier_{i}"
+                    )
+                
+                if enable_comparison_outlier:
+                    with col2:
+                        comparison_outlier_method = st.selectbox(
+                            "Detection method:",
+                            options=[
+                                "IQR Method (1.5x - standard)",
+                                "IQR Method (3.0x - lenient)",
+                                "Percentile Method"
+                            ],
+                            index=0,
+                            key=f"lt_comparison_outlier_method_{i}"
+                        )
+                    
+                    with col3:
+                        if "Percentile" in comparison_outlier_method:
+                            comparison_lower_pct = st.number_input(
+                                "Lower %", 
+                                min_value=0.0, 
+                                max_value=10.0, 
+                                value=1.0, 
+                                step=0.5,
+                                key=f"lt_comparison_lower_pct_{i}"
+                            )
+                            comparison_upper_pct = st.number_input(
+                                "Upper %", 
+                                min_value=90.0, 
+                                max_value=100.0, 
+                                value=99.0, 
+                                step=0.5,
+                                key=f"lt_comparison_upper_pct_{i}"
+                            )
+                        else:
+                            comparison_lower_pct = None
+                            comparison_upper_pct = None
+                    
+                    col_a, col_b = st.columns(2)
+                    with col_a:
+                        comparison_per_region = st.checkbox(
+                            "Apply per region",
+                            value=True,
+                            key=f"lt_comparison_per_region_{i}"
+                        )
+                    
+                    # Apply outlier filtering for comparison
+                    with st.spinner("Calculating outlier-filtered index..."):
+                        df_for_comparison = st.session_state['lt_df_filtered'].copy()
+                        
+                        # Apply outlier filter
+                        outlier_mask = detect_outliers_lt(
+                            df_for_comparison,
+                            price_metric=price_metric_name,
+                            method=comparison_outlier_method,
+                            lower_percentile=comparison_lower_pct,
+                            upper_percentile=comparison_upper_pct,
+                            per_region=comparison_per_region
+                        )
+                        df_outlier_filtered = df_for_comparison[outlier_mask]
+                        
+                        # Calculate how many outliers removed
+                        outliers_count = len(df_for_comparison) - len(df_outlier_filtered)
+                        outlier_pct = (outliers_count / len(df_for_comparison) * 100) if len(df_for_comparison) > 0 else 0
+                        
+                        st.info(f"🎯 **Comparison Filter:** Removed {outliers_count} quarters ({outlier_pct:.1f}%) for this comparison")
+                        
+                        # Recalculate prices and index with outlier-filtered data
+                        prices_outlier = create_prices_table_lt(df_outlier_filtered, price_metric_name, ma_quarters=i+1)
+                        index_outlier = create_index_table_lt(df_outlier_filtered, base_yr, base_qt, price_metric_name, ma_quarters=i+1)
+                        
+                        # Replace region codes with descriptive names
+                        index_outlier.index = index_outlier.index.map(lambda x: region_map.get(x, x))
+                    
+                    # Region selector for comparison
+                    st.markdown("#### 📊 Comparison Plot")
+                    comparison_regions_selected = st.multiselect(
+                        "Select regions to compare",
+                        available_regions,
+                        default=available_regions[:3] if len(available_regions) > 3 else available_regions,
+                        key=f"lt_comparison_regions_{i}"
+                    )
+                    
+                    if comparison_regions_selected:
+                        # Create comparison plot
+                        fig_comparison = go.Figure()
+                        
+                        # Filter to selected date range if applicable
+                        if date_range_plot and len(available_quarters) > 1:
+                            cols_to_show = [col for col in index_df_ma.columns if date_range_plot[0] <= col <= date_range_plot[1]]
+                        else:
+                            cols_to_show = index_df_ma.columns
+                        
+                        for region in comparison_regions_selected:
+                            # Original index (solid line)
+                            if region in index_df_ma.index:
+                                fig_comparison.add_trace(go.Scatter(
+                                    x=cols_to_show,
+                                    y=index_df_ma.loc[region, cols_to_show],
+                                    mode='lines+markers',
+                                    name=f"{region} (Original)",
+                                    line=dict(width=2, dash='solid'),
+                                    marker=dict(size=6),
+                                    legendgroup=region
+                                ))
+                            
+                            # Outlier-filtered index (dashed line)
+                            if region in index_outlier.index:
+                                fig_comparison.add_trace(go.Scatter(
+                                    x=cols_to_show,
+                                    y=index_outlier.loc[region, cols_to_show],
+                                    mode='lines+markers',
+                                    name=f"{region} (Outliers Removed)",
+                                    line=dict(width=2, dash='dash'),
+                                    marker=dict(size=4, symbol='x'),
+                                    legendgroup=region
+                                ))
+                        
+                        fig_comparison.update_layout(
+                            title=f"Index Comparison: Original vs Outlier-Filtered - {ma_label}",
+                            xaxis_title='Quarter',
+                            yaxis_title=f'Index ({base_yr}-Q{base_qt} = 1.0)',
+                            hovermode='x unified',
+                            height=600,
+                            legend=dict(orientation="v", yanchor="top", y=1, xanchor="left", x=1.02)
+                        )
+                        
+                        fig_comparison.update_xaxes(tickangle=45)
+                        
+                        st.plotly_chart(fig_comparison, use_container_width=True)
+                        
+                        st.caption("📖 **Legend:** Solid lines = Original data | Dashed lines = After outlier removal")
+                    else:
+                        st.info("👆 Select at least one region to see the comparison")
+                else:
+                    st.info("☝️ Enable outlier filtering above to see the comparison plot")
         
         # Changes (QoQ & YoY) tab - NEW!
         with tabs[11]:
