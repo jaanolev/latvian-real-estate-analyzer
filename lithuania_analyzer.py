@@ -156,7 +156,7 @@ def lithuania_analyzer():
         options=["Apartments", "Houses", "Office Premises", "Retail Premises", "Hotel/Recreation"],
         horizontal=True,
         help="Switch between different property types in Lithuania",
-        key="lt_property_type"
+        key="lt_property_type_radio"
     )
     
     st.markdown("---")
