@@ -166,10 +166,13 @@ def create_counts_table(df):
     return pivot
 
 def create_index_table(prices_pivot, property_type='Houses', base_year=None, base_quarter=None):
-    """Create index table with base period (2020-Q1 for Houses/Apartments, 2021-Q1 for Agricultural/Forest/Land commercial/Land residential/Other land, 2022-Q2 for Premises)"""
+    """Create index table with base period (2020-Q1 for Houses/Apartments, 2021-Q1 for Agricultural/Land commercial/Other land, 2022-Q2 for Premises, 2023-Q2 for Forest/Land residential)"""
     # Set default base period based on property type
     if base_year is None or base_quarter is None:
-        if property_type in ['Agricultural land', 'Forest land', 'Land commercial', 'Land residential', 'Other land']:
+        if property_type in ['Forest land', 'Land residential']:
+            base_year = 2023
+            base_quarter = 2
+        elif property_type in ['Agricultural land', 'Land commercial', 'Other land']:
             base_year = 2021
             base_quarter = 1
         elif property_type == 'Premises':
@@ -1181,7 +1184,9 @@ def main():
                 prop_type = st.session_state.get('property_type', 'Houses')
                 
                 # Set base period based on property type
-                if prop_type in ['Agricultural land', 'Forest land', 'Land commercial', 'Land residential', 'Other land']:
+                if prop_type in ['Forest land', 'Land residential']:
+                    base_period = "2023-Q2"
+                elif prop_type in ['Agricultural land', 'Land commercial', 'Other land']:
                     base_period = "2021-Q1"
                 elif prop_type == 'Premises':
                     base_period = "2022-Q2"
@@ -1955,7 +1960,9 @@ def main():
                 st.success(f"✅ Merged analysis generated for: **{merge_name}** ({', '.join(merge_regions_selected)})")
                 
                 # Set base period based on property type
-                if prop_type in ['Agricultural land', 'Forest land', 'Land commercial', 'Land residential', 'Other land']:
+                if prop_type in ['Forest land', 'Land residential']:
+                    base_period = "2023-Q2"
+                elif prop_type in ['Agricultural land', 'Land commercial', 'Other land']:
                     base_period = "2021-Q1"
                 elif prop_type == 'Premises':
                     base_period = "2022-Q2"
