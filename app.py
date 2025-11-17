@@ -35,6 +35,9 @@ def load_data(property_type='Houses'):
     elif property_type == 'Other land':
         filename = 'LV_otherland_merged_mapped_unfiltered.csv'
         df = pd.read_csv(filename, index_col=0)
+    elif property_type == 'Land commercial':
+        filename = 'Land_commercial_merged_processed_20251117.csv'
+        df = pd.read_csv(filename)  # No index_col
     elif property_type == 'Premises':
         filename = 'Premises_all_data_merged_processed_20251117_004724.csv'
         df = pd.read_csv(filename)  # No index_col for Premises
@@ -70,8 +73,8 @@ def calculate_price_per_m2(df, use_total_eur_m2=False, property_type='Houses'):
     """Calculate price per square meter"""
     df = df.copy()
     if use_total_eur_m2:
-        # For Agricultural land, Forest land, and Other land, use Land_EUR_m2, otherwise use Total_EUR_m2
-        if property_type in ['Agricultural land', 'Forest land', 'Other land']:
+        # For Agricultural land, Forest land, Land commercial, and Other land, use Land_EUR_m2, otherwise use Total_EUR_m2
+        if property_type in ['Agricultural land', 'Forest land', 'Land commercial', 'Other land']:
             df['Price_per_m2'] = df['Land_EUR_m2']
         else:
             df['Price_per_m2'] = df['Total_EUR_m2']
@@ -91,7 +94,7 @@ def aggregate_by_region_quarter(df, use_total_eur_m2=False, property_type='House
     # Filter out rows with missing data based on calculation method
     if use_total_eur_m2:
         # When using Total_EUR_m2 or Land_EUR_m2, only require the appropriate column to be valid
-        if property_type in ['Agricultural land', 'Forest land', 'Other land']:
+        if property_type in ['Agricultural land', 'Forest land', 'Land commercial', 'Other land']:
             df = df[df['Land_EUR_m2'].notna() & (df['Land_EUR_m2'] > 0)].copy()
         else:
             df = df[df['Total_EUR_m2'].notna() & (df['Total_EUR_m2'] > 0)].copy()
@@ -160,10 +163,10 @@ def create_counts_table(df):
     return pivot
 
 def create_index_table(prices_pivot, property_type='Houses', base_year=None, base_quarter=None):
-    """Create index table with base period (2020-Q1 for Houses/Apartments, 2021-Q1 for Agricultural/Forest/Other land, 2022-Q2 for Premises)"""
+    """Create index table with base period (2020-Q1 for Houses/Apartments, 2021-Q1 for Agricultural/Forest/Land commercial/Other land, 2022-Q2 for Premises)"""
     # Set default base period based on property type
     if base_year is None or base_quarter is None:
-        if property_type in ['Agricultural land', 'Forest land', 'Other land']:
+        if property_type in ['Agricultural land', 'Forest land', 'Land commercial', 'Other land']:
             base_year = 2021
             base_quarter = 1
         elif property_type == 'Premises':
@@ -196,8 +199,8 @@ def detect_outliers(df, use_total_eur_m2=False, method="IQR Method (1.5x - stand
     
     # Determine which price column to use
     if use_total_eur_m2:
-        # For Agricultural land, Forest land, and Other land, use Land_EUR_m2
-        if property_type in ['Agricultural land', 'Forest land', 'Other land']:
+        # For Agricultural land, Forest land, Land commercial, and Other land, use Land_EUR_m2
+        if property_type in ['Agricultural land', 'Forest land', 'Land commercial', 'Other land']:
             price_col = 'Land_EUR_m2'
         else:
             price_col = 'Total_EUR_m2'
@@ -357,9 +360,9 @@ def main():
     # Property type selector at the very top
     property_type = st.radio(
         "**Select Property Type:**",
-        options=["Houses", "Apartments", "Premises", "Agricultural land", "Forest land", "Other land"],
+        options=["Houses", "Apartments", "Premises", "Agricultural land", "Forest land", "Land commercial", "Other land"],
         horizontal=True,
-        help="Switch between houses, apartments, premises, agricultural land, forest land, and other land analysis",
+        help="Switch between houses, apartments, premises, agricultural land, forest land, commercial land, and other land analysis",
         key="property_type_selector"
     )
     
@@ -390,7 +393,7 @@ def main():
     st.sidebar.subheader("⚙️ Calculation Method")
     
     # Adjust options based on property type
-    if property_type in ['Agricultural land', 'Forest land', 'Other land']:
+    if property_type in ['Agricultural land', 'Forest land', 'Land commercial', 'Other land']:
         price_method = st.sidebar.radio(
             "Price per m² calculation:",
             options=["Calculated (Price ÷ Sold Area)", "Use Land_EUR_m2 column"],
@@ -516,7 +519,7 @@ def main():
         st.markdown("---")
         
         # Price per m² filter (Total_EUR_m2 or Land_EUR_m2)
-        price_m2_col = 'Land_EUR_m2' if property_type in ['Agricultural land', 'Forest land', 'Other land'] else 'Total_EUR_m2'
+        price_m2_col = 'Land_EUR_m2' if property_type in ['Agricultural land', 'Forest land', 'Land commercial', 'Other land'] else 'Total_EUR_m2'
         st.write("**Price per m² (EUR/m²)**")
         filter_price_m2 = st.checkbox("Filter by price per m²", value=False, key="filter_price_m2")
         if filter_price_m2:
@@ -814,7 +817,7 @@ def main():
     
     # Price per m² filter
     if price_m2_range:
-        price_m2_col = 'Land_EUR_m2' if property_type in ['Agricultural land', 'Forest land', 'Other land'] else 'Total_EUR_m2'
+        price_m2_col = 'Land_EUR_m2' if property_type in ['Agricultural land', 'Forest land', 'Land commercial', 'Other land'] else 'Total_EUR_m2'
         if price_m2_col in df_filtered.columns:
             df_filtered = df_filtered[(df_filtered[price_m2_col] >= price_m2_range[0]) & 
                                       (df_filtered[price_m2_col] <= price_m2_range[1])]
@@ -1010,7 +1013,7 @@ def main():
                 'Price_per_m2': ['mean', 'median', 'std']
             }).round(2)
             
-            if prop_type in ['Agricultural land', 'Forest land', 'Other land']:
+            if prop_type in ['Agricultural land', 'Forest land', 'Land commercial', 'Other land']:
                 method_label = "Land_EUR_m2" if use_total else "Calculated (Price ÷ Sold Area)"
             else:
                 method_label = "Total_EUR_m2" if use_total else "Calculated (Price ÷ Sold Area)"
@@ -1021,7 +1024,7 @@ def main():
             
             if use_total:
                 # Check Total_EUR_m2 or Land_EUR_m2 validity
-                if prop_type in ['Agricultural land', 'Forest land', 'Other land']:
+                if prop_type in ['Agricultural land', 'Forest land', 'Land commercial', 'Other land']:
                     valid_for_prices = df_filt[df_filt['Land_EUR_m2'].notna() & (df_filt['Land_EUR_m2'] > 0)]
                     method_desc = "missing Land_EUR_m2"
                 else:
@@ -1038,7 +1041,7 @@ def main():
             if excluded_count > 0:
                 st.warning(f"⚠️ **Data Quality Note:** {excluded_count:,} of {total_records:,} transactions ({excluded_count/total_records*100:.1f}%) were excluded from price calculations due to {method_desc}. These are still counted in the 'Counts' tab.")
                 if not use_total and excluded_count > total_records * 0.2:  # If more than 20% excluded with calculated method
-                    if prop_type in ['Agricultural land', 'Forest land', 'Other land']:
+                    if prop_type in ['Agricultural land', 'Forest land', 'Land commercial', 'Other land']:
                         st.info(f"💡 **Tip:** Try using 'Land_EUR_m2 column' method (in sidebar) for better data coverage!")
                     else:
                         st.info(f"💡 **Tip:** Try using 'Total_EUR_m2 column' method (in sidebar) for better data coverage. It has no missing values and will include all {total_records:,} transactions!")
@@ -1080,7 +1083,7 @@ def main():
                 
                 use_total = st.session_state.get('use_total_eur_m2', False)
                 prop_type = st.session_state.get('property_type', 'Houses')
-                if prop_type in ['Agricultural land', 'Forest land', 'Other land']:
+                if prop_type in ['Agricultural land', 'Forest land', 'Land commercial', 'Other land']:
                     method_label = "Land_EUR_m2" if use_total else "Calculated (Price ÷ Sold Area)"
                 else:
                     method_label = "Total_EUR_m2" if use_total else "Calculated (Price ÷ Sold Area)"
@@ -1175,7 +1178,7 @@ def main():
                 prop_type = st.session_state.get('property_type', 'Houses')
                 
                 # Set base period based on property type
-                if prop_type in ['Agricultural land', 'Forest land', 'Other land']:
+                if prop_type in ['Agricultural land', 'Forest land', 'Land commercial', 'Other land']:
                     base_period = "2021-Q1"
                 elif prop_type == 'Premises':
                     base_period = "2022-Q2"
@@ -1183,7 +1186,7 @@ def main():
                     base_period = "2020-Q1"
                 st.subheader(f"📈 Price Index (Base: {base_period} = 1.0) - {ma_label}")
                 
-                if prop_type in ['Agricultural land', 'Forest land', 'Other land']:
+                if prop_type in ['Agricultural land', 'Forest land', 'Land commercial', 'Other land']:
                     method_label = "Land_EUR_m2" if use_total else "Calculated (Price ÷ Sold Area)"
                 else:
                     method_label = "Total_EUR_m2" if use_total else "Calculated (Price ÷ Sold Area)"
@@ -1396,7 +1399,7 @@ def main():
             df_filt = calculate_price_per_m2(df_filt.copy(), use_total_eur_m2=False, property_type=prop_type)  # Calculate Price_per_m2
             
             # Filter for valid data (need at least one valid price method)
-            if prop_type in ['Agricultural land', 'Forest land', 'Other land']:
+            if prop_type in ['Agricultural land', 'Forest land', 'Land commercial', 'Other land']:
                 df_dist = df_filt[
                     (df_filt['Price_EUR'].notna() & df_filt['Sold_Area_m2'].notna() & (df_filt['Sold_Area_m2'] > 0)) |
                     (df_filt['Land_EUR_m2'].notna() & (df_filt['Land_EUR_m2'] > 0))
@@ -1430,7 +1433,7 @@ def main():
                     )
                 
                 with col2:
-                    if prop_type in ['Agricultural land', 'Forest land', 'Other land']:
+                    if prop_type in ['Agricultural land', 'Forest land', 'Land commercial', 'Other land']:
                         price_metric = st.radio(
                             "Price metric:",
                             options=[
@@ -1949,14 +1952,14 @@ def main():
                 st.success(f"✅ Merged analysis generated for: **{merge_name}** ({', '.join(merge_regions_selected)})")
                 
                 # Set base period based on property type
-                if prop_type in ['Agricultural land', 'Forest land', 'Other land']:
+                if prop_type in ['Agricultural land', 'Forest land', 'Land commercial', 'Other land']:
                     base_period = "2021-Q1"
                 elif prop_type == 'Premises':
                     base_period = "2022-Q2"
                 else:
                     base_period = "2020-Q1"
                 
-                if prop_type in ['Agricultural land', 'Forest land', 'Other land']:
+                if prop_type in ['Agricultural land', 'Forest land', 'Land commercial', 'Other land']:
                     method_label = "Land_EUR_m2" if use_total else "Calculated (Price ÷ Sold Area)"
                 else:
                     method_label = "Total_EUR_m2" if use_total else "Calculated (Price ÷ Sold Area)"
