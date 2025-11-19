@@ -74,6 +74,10 @@ def load_data(property_type='Houses'):
 
 def calculate_price_per_m2(df, use_total_eur_m2=False, property_type='Houses'):
     """Calculate price per square meter"""
+    # Ensure we have a DataFrame, not a Series
+    if isinstance(df, pd.Series):
+        df = df.to_frame().T
+    
     df = df.copy()
     if use_total_eur_m2:
         # For Agricultural land, Forest land, Land commercial, Land residential, and Other land, use Land_EUR_m2, otherwise use Total_EUR_m2
@@ -213,8 +217,8 @@ def detect_outliers(df, use_total_eur_m2=False, method="IQR Method (1.5x - stand
                    lower_percentile=None, upper_percentile=None,
                    per_region=False, per_quarter=False, property_type='Houses'):
     """
-    Detect outliers based on price per m² distribution
-    Returns a boolean mask where True = keep, False = outlier (remove)
+    Detect and remove outliers based on price per m² distribution
+    Returns a filtered DataFrame with outliers removed
     """
     # Calculate price per m²
     df_temp = calculate_price_per_m2(df.copy(), use_total_eur_m2, property_type)
@@ -230,9 +234,9 @@ def detect_outliers(df, use_total_eur_m2=False, method="IQR Method (1.5x - stand
     # Only apply outlier detection to rows with valid prices
     valid_price_mask = df_temp[price_col].notna() & (df_temp[price_col] > 0)
     
-    # If no valid prices, return keep_mask as is
+    # If no valid prices, return original dataframe unchanged
     if not valid_price_mask.any():
-        return keep_mask
+        return df.copy()
     
     # Determine grouping
     if per_region and per_quarter:
@@ -279,7 +283,8 @@ def detect_outliers(df, use_total_eur_m2=False, method="IQR Method (1.5x - stand
     # Rows with invalid/missing prices are kept (True) - they'll be filtered later by aggregate function
     # This ensures we don't accidentally remove valid data
     
-    return keep_mask
+    # Return the filtered dataframe, not the mask
+    return df[keep_mask].copy()
 
 def plot_regions(df_pivot, title, yaxis_title, selected_regions=None, date_range=None):
     """Create interactive line plot"""
@@ -1605,7 +1610,7 @@ def main():
     outliers_removed = 0
     
     if enable_outlier_filter:
-        outlier_mask = detect_outliers(
+        df_filtered = detect_outliers(
             df_filtered,
             use_total_eur_m2=use_total_eur_m2,
             method=outlier_method,
@@ -1615,7 +1620,6 @@ def main():
             per_quarter=apply_per_quarter,
             property_type=property_type
         )
-        df_filtered = df_filtered[outlier_mask]
         outliers_removed = records_before_outlier - len(df_filtered)
     
     # Duplicate removal
@@ -2043,7 +2047,7 @@ def main():
                         prop_type = st.session_state.get('property_type', 'Houses')
                         
                         # Apply outlier filter
-                        outlier_mask = detect_outliers(
+                        df_outlier_filtered = detect_outliers(
                             df_for_comparison,
                             use_total_eur_m2=use_total,
                             method=comparison_outlier_method,
@@ -2053,7 +2057,6 @@ def main():
                             per_quarter=comparison_per_quarter,
                             property_type=prop_type
                         )
-                        df_outlier_filtered = df_for_comparison[outlier_mask]
                         
                         # Calculate how many outliers removed
                         outliers_count = len(df_for_comparison) - len(df_outlier_filtered)
