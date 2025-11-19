@@ -712,12 +712,52 @@ def show_final_indexes_master_view():
                 # Create comparison plot
                 fig_ts = go.Figure()
                 
+                # Function to convert quarter string to datetime for proper sorting
+                def quarter_to_date(q_str):
+                    """Convert '2020-Q1' to datetime"""
+                    try:
+                        parts = q_str.split('-Q')
+                        if len(parts) == 2:
+                            year = int(parts[0])
+                            quarter = int(parts[1])
+                            month = (quarter - 1) * 3 + 1
+                            return pd.Timestamp(year=year, month=month, day=1)
+                    except:
+                        pass
+                    return None
+                
+                # Collect all unique quarters and convert to datetime
+                all_quarters = []
+                quarter_mapping = {}  # datetime -> string mapping
+                
                 for index_name in selected_indexes:
                     index_info = final_indexes[index_name]
                     index_series = index_info['index']
                     
+                    for q_str in index_series.index:
+                        q_date = quarter_to_date(q_str)
+                        if q_date is not None:
+                            all_quarters.append(q_date)
+                            quarter_mapping[q_date] = q_str
+                
+                # Get unique quarters and sort chronologically
+                unique_quarters_dt = sorted(list(set(all_quarters)))
+                
+                # Select which ticks to show (every 4th quarter = once per year)
+                tick_indices = list(range(0, len(unique_quarters_dt), 4))
+                tickvals_dt = [unique_quarters_dt[i] for i in tick_indices if i < len(unique_quarters_dt)]
+                ticktext = [quarter_mapping[dt] for dt in tickvals_dt]
+                
+                # Plot each series with datetime x-axis
+                for index_name in selected_indexes:
+                    index_info = final_indexes[index_name]
+                    index_series = index_info['index']
+                    
+                    # Convert quarters to datetime for this series
+                    x_dates = [quarter_to_date(q) for q in index_series.index]
+                    
                     fig_ts.add_trace(go.Scatter(
-                        x=index_series.index,
+                        x=x_dates,
                         y=index_series.values,
                         mode='lines+markers',
                         name=index_name,
@@ -731,9 +771,32 @@ def show_final_indexes_master_view():
                     yaxis_title="Index (Base = 1.0)",
                     hovermode='x unified',
                     height=600,
-                    legend=dict(orientation="v", yanchor="top", y=1, xanchor="left", x=1.02)
+                    legend=dict(
+                        orientation="v", 
+                        yanchor="top", 
+                        y=0.99, 
+                        xanchor="left", 
+                        x=1.01,
+                        bgcolor="rgba(255, 255, 255, 0.9)",
+                        bordercolor="rgba(0, 0, 0, 0.3)",
+                        borderwidth=1,
+                        font=dict(size=10)
+                    ),
+                    margin=dict(r=250, b=120, t=80, l=80)
                 )
-                fig_ts.update_xaxes(tickangle=45)
+                fig_ts.update_xaxes(
+                    tickangle=45,
+                    tickmode='array',
+                    tickvals=tickvals_dt,
+                    ticktext=ticktext
+                )
+                fig_ts.update_yaxes(
+                    gridcolor='lightgray',
+                    gridwidth=0.5,
+                    zeroline=True,
+                    zerolinecolor='black',
+                    zerolinewidth=1
+                )
                 st.plotly_chart(fig_ts, use_container_width=True)
                 
                 # Data table
