@@ -844,6 +844,7 @@ def show_final_indexes_master_view():
             "📊 All Final Indexes",
             "📈 By Category",
             "📉 Time Series",
+            "📦 Boxplot Analysis",
             "📥 Export"
         ])
         
@@ -1148,8 +1149,292 @@ def show_final_indexes_master_view():
             else:
                 st.info("👆 Select at least one index to view the time series")
         
-        # Tab 4: Export
+        # Tab 4: Boxplot Analysis
         with tabs[3]:
+            st.subheader("📦 Price Distribution Boxplot Analysis")
+            st.caption("Visualize price per m² distributions by quarter with configurable outlier thresholds")
+            
+            # Need to reload raw data for boxplot visualization
+            st.markdown("### Select Index for Analysis")
+            
+            col1, col2 = st.columns([2, 1])
+            
+            with col1:
+                selected_index_for_boxplot = st.selectbox(
+                    "Choose an index to analyze",
+                    list(final_indexes.keys()),
+                    key="boxplot_index_selector"
+                )
+            
+            with col2:
+                show_quarterly = st.checkbox("Show by Quarter", value=True, 
+                                            help="Show boxplot for each quarter separately")
+            
+            if selected_index_for_boxplot and st.button("🔍 Load Data for Boxplot", type="primary"):
+                with st.spinner("Loading transaction data..."):
+                    # Need to reload and process the data for this specific index
+                    # Get the index configuration
+                    index_info = final_indexes[selected_index_for_boxplot]
+                    
+                    # Determine which property type and regions this index uses
+                    found_config = None
+                    for category, cat_config in final_indexes_config.items():
+                        for idx_config in cat_config["indexes"]:
+                            if idx_config["name"] == selected_index_for_boxplot:
+                                found_config = idx_config
+                                prop_type_key = cat_config["property_type"]
+                                break
+                        if found_config:
+                            break
+                    
+                    if found_config:
+                        regions_to_load = found_config["regions"]
+                        combine_types = found_config.get("combine_property_types", None)
+                        
+                        # Load the data
+                        if combine_types:
+                            # Handle combined property types
+                            combined_dfs = []
+                            for prop_type in combine_types:
+                                config = property_types[prop_type]
+                                if config["index_col"] is not None:
+                                    df_temp = pd.read_csv(config["file"], index_col=config["index_col"])
+                                else:
+                                    df_temp = pd.read_csv(config["file"])
+                                
+                                # Clean data
+                                numeric_cols = ['Sold_Area_m2', 'Total_Area_m2', 'Price_EUR', 'Total_EUR_m2', 'Land_EUR_m2', 'Interior_Area_m2']
+                                for col in numeric_cols:
+                                    if col in df_temp.columns:
+                                        df_temp[col] = clean_numeric_column(df_temp[col])
+                                
+                                df_temp['Date'] = pd.to_datetime(df_temp['Date'], errors='coerce')
+                                df_temp['Quarter'] = df_temp['Date'].dt.quarter
+                                df_temp['Year'] = df_temp['Date'].dt.year
+                                df_temp = df_temp.dropna(subset=['Date'])
+                                df_temp = df_temp[(df_temp['Year'] > 0) & (df_temp['Quarter'] >= 1) & (df_temp['Quarter'] <= 4)]
+                                
+                                df_temp = df_temp[df_temp['region_riga_separate'].isin(regions_to_load)]
+                                combined_dfs.append(df_temp)
+                            
+                            df_for_boxplot = pd.concat(combined_dfs, ignore_index=True)
+                            prop_type_for_calc = combine_types[0]
+                        else:
+                            # Single property type
+                            config = property_types[prop_type_key]
+                            if config["index_col"] is not None:
+                                df_for_boxplot = pd.read_csv(config["file"], index_col=config["index_col"])
+                            else:
+                                df_for_boxplot = pd.read_csv(config["file"])
+                            
+                            # Clean data
+                            numeric_cols = ['Sold_Area_m2', 'Total_Area_m2', 'Price_EUR', 'Total_EUR_m2', 'Land_EUR_m2', 'Interior_Area_m2']
+                            for col in numeric_cols:
+                                if col in df_for_boxplot.columns:
+                                    df_for_boxplot[col] = clean_numeric_column(df_for_boxplot[col])
+                            
+                            df_for_boxplot['Date'] = pd.to_datetime(df_for_boxplot['Date'], errors='coerce')
+                            df_for_boxplot['Quarter'] = df_for_boxplot['Date'].dt.quarter
+                            df_for_boxplot['Year'] = df_for_boxplot['Date'].dt.year
+                            df_for_boxplot = df_for_boxplot.dropna(subset=['Date'])
+                            df_for_boxplot = df_for_boxplot[(df_for_boxplot['Year'] > 0) & (df_for_boxplot['Quarter'] >= 1) & (df_for_boxplot['Quarter'] <= 4)]
+                            
+                            df_for_boxplot = df_for_boxplot[df_for_boxplot['region_riga_separate'].isin(regions_to_load)]
+                            prop_type_for_calc = prop_type_key
+                        
+                        # Calculate price per m2
+                        df_for_boxplot = calculate_price_per_m2(df_for_boxplot, use_total_eur_m2=True, property_type=prop_type_for_calc)
+                        
+                        # Create quarter-year column
+                        df_for_boxplot['YearQuarter'] = df_for_boxplot['Year'].astype(str) + '-Q' + df_for_boxplot['Quarter'].astype(str)
+                        
+                        # Store in session state
+                        st.session_state['boxplot_data'] = df_for_boxplot
+                        st.session_state['boxplot_index_name'] = selected_index_for_boxplot
+                        
+                        st.success(f"✅ Loaded {len(df_for_boxplot):,} transactions for {selected_index_for_boxplot}")
+            
+            # Display boxplot if data is loaded
+            if 'boxplot_data' in st.session_state and st.session_state.get('boxplot_index_name') == selected_index_for_boxplot:
+                df_boxplot = st.session_state['boxplot_data']
+                
+                st.markdown("---")
+                st.markdown("### 🎚️ Configure Outlier Thresholds")
+                
+                # Calculate current distribution statistics
+                price_data = df_boxplot['Price_per_m2'].dropna()
+                q1 = price_data.quantile(0.25)
+                q3 = price_data.quantile(0.75)
+                iqr = q3 - q1
+                default_lower = max(0, q1 - 1.5 * iqr)
+                default_upper = q3 + 1.5 * iqr
+                price_min = price_data.min()
+                price_max = price_data.max()
+                price_median = price_data.median()
+                
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    st.metric("Median Price/m²", f"{price_median:.0f} EUR")
+                    st.metric("Q1 (25%)", f"{q1:.0f} EUR")
+                
+                with col2:
+                    st.metric("Data Range", f"{price_min:.0f} - {price_max:.0f} EUR")
+                    st.metric("Q3 (75%)", f"{q3:.0f} EUR")
+                
+                with col3:
+                    st.metric("IQR", f"{iqr:.0f} EUR")
+                    st.metric("Transactions", f"{len(df_boxplot):,}")
+                
+                st.markdown("#### Set Custom Threshold Lines")
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    threshold_min = st.number_input(
+                        "Minimum Threshold (EUR/m²)",
+                        min_value=0.0,
+                        max_value=float(price_max),
+                        value=float(default_lower),
+                        step=50.0,
+                        help="Transactions below this will be highlighted as potential outliers"
+                    )
+                
+                with col2:
+                    threshold_max = st.number_input(
+                        "Maximum Threshold (EUR/m²)",
+                        min_value=0.0,
+                        max_value=float(price_max * 2),
+                        value=float(default_upper),
+                        step=50.0,
+                        help="Transactions above this will be highlighted as potential outliers"
+                    )
+                
+                # Count how many would be excluded
+                outliers_below = len(df_boxplot[df_boxplot['Price_per_m2'] < threshold_min])
+                outliers_above = len(df_boxplot[df_boxplot['Price_per_m2'] > threshold_max])
+                total_outliers = outliers_below + outliers_above
+                outlier_pct = (total_outliers / len(df_boxplot) * 100) if len(df_boxplot) > 0 else 0
+                
+                st.info(
+                    f"**With these thresholds:** {total_outliers:,} transactions ({outlier_pct:.1f}%) would be excluded\n\n"
+                    f"• Below {threshold_min:.0f}: {outliers_below:,} transactions\n\n"
+                    f"• Above {threshold_max:.0f}: {outliers_above:,} transactions"
+                )
+                
+                st.markdown("---")
+                st.markdown("### 📊 Boxplot Visualization")
+                
+                # Create boxplot
+                if show_quarterly:
+                    # Sort quarters chronologically
+                    df_boxplot_sorted = df_boxplot.copy()
+                    df_boxplot_sorted = df_boxplot_sorted.sort_values(['Year', 'Quarter'])
+                    unique_quarters = df_boxplot_sorted['YearQuarter'].unique()
+                    
+                    fig_box = go.Figure()
+                    
+                    # Add boxplot for each quarter
+                    for quarter in unique_quarters:
+                        quarter_data = df_boxplot_sorted[df_boxplot_sorted['YearQuarter'] == quarter]['Price_per_m2'].dropna()
+                        
+                        if len(quarter_data) > 0:
+                            fig_box.add_trace(go.Box(
+                                y=quarter_data,
+                                name=quarter,
+                                boxmean='sd',
+                                marker=dict(color='lightblue'),
+                                line=dict(color='darkblue')
+                            ))
+                    
+                    # Add threshold lines
+                    fig_box.add_hline(
+                        y=threshold_min,
+                        line_dash="dash",
+                        line_color="red",
+                        annotation_text=f"Min Threshold: {threshold_min:.0f} EUR/m²",
+                        annotation_position="right"
+                    )
+                    
+                    fig_box.add_hline(
+                        y=threshold_max,
+                        line_dash="dash",
+                        line_color="red",
+                        annotation_text=f"Max Threshold: {threshold_max:.0f} EUR/m²",
+                        annotation_position="right"
+                    )
+                    
+                    fig_box.update_layout(
+                        title=f"Price per m² Distribution by Quarter - {selected_index_for_boxplot}",
+                        xaxis_title="Quarter",
+                        yaxis_title="Price per m² (EUR)",
+                        height=600,
+                        showlegend=False,
+                        hovermode='closest'
+                    )
+                    
+                    fig_box.update_xaxes(tickangle=45)
+                    
+                else:
+                    # Single overall boxplot
+                    fig_box = go.Figure()
+                    
+                    fig_box.add_trace(go.Box(
+                        y=df_boxplot['Price_per_m2'].dropna(),
+                        name=selected_index_for_boxplot,
+                        boxmean='sd',
+                        marker=dict(color='lightblue'),
+                        line=dict(color='darkblue')
+                    ))
+                    
+                    # Add threshold lines
+                    fig_box.add_hline(
+                        y=threshold_min,
+                        line_dash="dash",
+                        line_color="red",
+                        annotation_text=f"Min Threshold: {threshold_min:.0f} EUR/m²",
+                        annotation_position="right"
+                    )
+                    
+                    fig_box.add_hline(
+                        y=threshold_max,
+                        line_dash="dash",
+                        line_color="red",
+                        annotation_text=f"Max Threshold: {threshold_max:.0f} EUR/m²",
+                        annotation_position="right"
+                    )
+                    
+                    fig_box.update_layout(
+                        title=f"Overall Price per m² Distribution - {selected_index_for_boxplot}",
+                        xaxis_title="Index",
+                        yaxis_title="Price per m² (EUR)",
+                        height=600,
+                        showlegend=False
+                    )
+                
+                st.plotly_chart(fig_box, use_container_width=True)
+                
+                # Download filtered data option
+                st.markdown("### 📥 Export Filtered Data")
+                
+                if st.checkbox("Apply thresholds and prepare download"):
+                    df_filtered_by_threshold = df_boxplot[
+                        (df_boxplot['Price_per_m2'] >= threshold_min) & 
+                        (df_boxplot['Price_per_m2'] <= threshold_max)
+                    ].copy()
+                    
+                    st.success(f"✅ {len(df_filtered_by_threshold):,} transactions remain after applying thresholds")
+                    
+                    csv_data = df_filtered_by_threshold.to_csv(index=False)
+                    st.download_button(
+                        label="📥 Download Filtered Transactions (CSV)",
+                        data=csv_data,
+                        file_name=f"{selected_index_for_boxplot}_filtered_{threshold_min:.0f}_{threshold_max:.0f}.csv",
+                        mime="text/csv"
+                    )
+        
+        # Tab 5: Export
+        with tabs[4]:
             st.subheader("Export Final Indexes")
             st.caption("Download final indexes in various formats")
             
