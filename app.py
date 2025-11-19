@@ -767,15 +767,18 @@ def show_final_indexes_master_view():
                 st.markdown("**Property Type**")
                 enable_type_filter = st.checkbox("Filter by property type", value=False)
                 if enable_type_filter:
-                    # Note: Types vary by property category
-                    type_filter_values = st.text_input(
-                        "Property types (comma-separated)",
-                        help="Examples: 'New project', 'Secondary market', 'House', 'Cottage', etc.",
-                        placeholder="e.g., New project, Secondary market"
+                    # Predefined common property types
+                    common_types = [
+                        "New project", "Secondary market", "House", "Cottage", "Villa", 
+                        "Townhouse", "Agricultural", "Forest", "Building plot", "Land plot",
+                        "Commercial", "Warehouse", "Office", "Retail", "Industrial"
+                    ]
+                    type_filter_list = st.multiselect(
+                        "Property types (select multiple)",
+                        options=common_types,
+                        help="Select one or more property types to include"
                     )
-                    if type_filter_values:
-                        type_filter_list = [t.strip() for t in type_filter_values.split(',')]
-                    else:
+                    if not type_filter_list:
                         type_filter_list = None
                 else:
                     type_filter_list = None
@@ -784,14 +787,18 @@ def show_final_indexes_master_view():
                 st.caption("For apartments and houses")
                 enable_finishing_filter = st.checkbox("Filter by finishing", value=False)
                 if enable_finishing_filter:
-                    finishing_filter_values = st.text_input(
-                        "Finishing types (comma-separated)",
-                        help="Examples: 'Renovated', 'Good condition', 'Needs renovation', etc.",
-                        placeholder="e.g., Renovated, Good condition"
+                    # Predefined finishing quality options
+                    finishing_options = [
+                        "Perfect condition", "Renovated", "Good condition", 
+                        "Normal condition", "Needs renovation", "Needs major renovation",
+                        "New", "Excellent", "Average", "Poor"
+                    ]
+                    finishing_filter_list = st.multiselect(
+                        "Finishing types (select multiple)",
+                        options=finishing_options,
+                        help="Select one or more finishing quality levels"
                     )
-                    if finishing_filter_values:
-                        finishing_filter_list = [f.strip() for f in finishing_filter_values.split(',')]
-                    else:
+                    if not finishing_filter_list:
                         finishing_filter_list = None
                 else:
                     finishing_filter_list = None
@@ -801,8 +808,8 @@ def show_final_indexes_master_view():
                 st.caption("For properties with multiple units")
                 enable_parts_filter = st.checkbox("Filter by number of parts", value=False)
                 if enable_parts_filter:
-                    parts_min = st.number_input("Min parts", min_value=1, value=1, step=1)
-                    parts_max = st.number_input("Max parts", min_value=1, value=10, step=1)
+                    parts_min = st.number_input("Min parts", min_value=1, value=1, step=1, key="parts_min_filter")
+                    parts_max = st.number_input("Max parts", min_value=1, value=10, step=1, key="parts_max_filter")
                 else:
                     parts_min = None
                     parts_max = None
@@ -811,14 +818,18 @@ def show_final_indexes_master_view():
                 st.caption("Specific property categories")
                 enable_category_filter = st.checkbox("Filter by category", value=False)
                 if enable_category_filter:
-                    category_filter_values = st.text_input(
-                        "Categories (comma-separated)",
-                        help="Examples: 'Apartment', 'House', 'Land plot', etc.",
-                        placeholder="e.g., Apartment, House"
+                    # Predefined category options
+                    category_options = [
+                        "Apartment", "House", "Land plot", "Commercial premises",
+                        "Office space", "Warehouse", "Retail space", "Agricultural land",
+                        "Forest land", "Building plot", "Industrial property"
+                    ]
+                    category_filter_list = st.multiselect(
+                        "Categories (select multiple)",
+                        options=category_options,
+                        help="Select one or more property categories"
                     )
-                    if category_filter_values:
-                        category_filter_list = [c.strip() for c in category_filter_values.split(',')]
-                    else:
+                    if not category_filter_list:
                         category_filter_list = None
                 else:
                     category_filter_list = None
@@ -827,14 +838,20 @@ def show_final_indexes_master_view():
                 st.caption("Filter by specific municipalities")
                 enable_municipality_filter = st.checkbox("Filter by municipality", value=False)
                 if enable_municipality_filter:
-                    municipality_filter_values = st.text_input(
-                        "Municipalities (comma-separated)",
-                        help="Examples: 'Rīga', 'Jūrmala', 'Liepāja', etc.",
-                        placeholder="e.g., Rīga, Jūrmala"
+                    # Predefined major municipalities in Latvia
+                    municipality_options = [
+                        "Rīga", "Jūrmala", "Liepāja", "Daugavpils", "Jelgava",
+                        "Ventspils", "Rēzekne", "Valmiera", "Jēkabpils", "Ogre",
+                        "Tukums", "Salaspils", "Cēsis", "Kuldīga", "Olaine",
+                        "Saldus", "Talsi", "Bauska", "Sigulda", "Madona",
+                        "Aizkraukle", "Limbaži", "Dobele", "Krāslava", "Alūksne"
+                    ]
+                    municipality_filter_list = st.multiselect(
+                        "Municipalities (select multiple)",
+                        options=sorted(municipality_options),
+                        help="Select one or more municipalities"
                     )
-                    if municipality_filter_values:
-                        municipality_filter_list = [m.strip() for m in municipality_filter_values.split(',')]
-                    else:
+                    if not municipality_filter_list:
                         municipality_filter_list = None
                 else:
                     municipality_filter_list = None
