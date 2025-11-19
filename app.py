@@ -24,7 +24,7 @@ def load_data(property_type='Houses'):
     """Load and prepare the dataset"""
     # Select the appropriate CSV file
     if property_type == 'Apartments':
-        filename = 'LV_apartments_merged_mapped_unfiltered.csv'
+        filename = 'apartments_merged_processed_20251119_221630.csv'
         df = pd.read_csv(filename, index_col=0)
     elif property_type == 'Agricultural land':
         filename = 'LV_agriland_merged_mapped_unfiltered.csv'
@@ -148,7 +148,9 @@ def aggregate_by_region_quarter(df, use_total_eur_m2=False, property_type='House
             'Sold_Area_m2': 'sum',
             'Price_per_m2': 'mean'
         }).reset_index()
-        agg_df['Avg_Price_per_m2'] = agg_df['Price_EUR'] / agg_df['Sold_Area_m2']
+        # Use the mean of individual prices, not recalculated from totals
+        # This prevents extreme values when some transactions have tiny areas
+        agg_df['Avg_Price_per_m2'] = agg_df['Price_per_m2']
     
     return agg_df
 
@@ -488,7 +490,7 @@ def show_final_indexes_master_view():
     
     # Property types to analyze
     property_types = {
-        "Apartments": {"file": "LV_apartments_merged_mapped_unfiltered.csv", "base": "2020-Q1", "index_col": 0},
+        "Apartments": {"file": "apartments_merged_processed_20251119_221630.csv", "base": "2020-Q1", "index_col": 0},
         "Houses": {"file": "LV_houses_merged_mapped_unfiltered.csv", "base": "2020-Q1", "index_col": 0},
         "Land residential": {"file": "Land_residental_data_merged_processed_20251117_030224.csv", "base": "2023-Q2", "index_col": None},
         "Premises": {"file": "Premises_all_data_merged_processed_20251117_004724.csv", "base": "2022-Q2", "index_col": None},
@@ -582,6 +584,18 @@ def show_final_indexes_master_view():
         if use_per_category_filters:
             for category in list(final_indexes_config.keys()):
                 with st.expander(f"⚙️ Filters for {category}"):
+                    # Region filter (full width at top)
+                    st.markdown("**🌍 Region Selection**")
+                    all_regions = ['Rīga', 'Pierīga', 'Kurzeme', 'Vidzeme', 'Zemgale', 'Latgale', 'Unknown']
+                    selected_regions = st.multiselect(
+                        f"Select regions (leave empty for all regions)",
+                        options=all_regions,
+                        default=[],
+                        key=f"cat_regions_{category}",
+                        help="Choose specific regions for this index. Empty = use all regions"
+                    )
+                    
+                    st.markdown("---")
                     col1, col2 = st.columns(2)
                     
                     with col1:
@@ -623,6 +637,7 @@ def show_final_indexes_master_view():
                             cat_date_to = None
                     
                     per_category_settings[category] = {
+                        'regions': selected_regions if len(selected_regions) > 0 else None,
                         'price_m2_min': cat_price_m2_min,
                         'price_m2_max': cat_price_m2_max,
                         'price_min': cat_price_min,
@@ -940,6 +955,15 @@ def show_final_indexes_master_view():
                                 
                                 # Get cached data and filter to regions
                                 df_temp = loaded_data_cache[prop_type]['data'].copy()
+                                
+                                # Apply per-category region filter FIRST (if set)
+                                cat_settings = per_category_settings.get(category, {})
+                                cat_regions_filter = cat_settings.get('regions')
+                                if cat_regions_filter and len(cat_regions_filter) > 0:
+                                    if 'region_riga_separate' in df_temp.columns:
+                                        df_temp = df_temp[df_temp['region_riga_separate'].isin(cat_regions_filter)].copy()
+                                
+                                # Filter to index-specific regions
                                 df_temp = df_temp[df_temp['region_riga_separate'].isin(regions_to_combine)]
                                 combined_df.append(df_temp)
                                 
@@ -995,7 +1019,14 @@ def show_final_indexes_master_view():
                             df = loaded_data_cache[prop_type]['data'].copy()
                             base_period = loaded_data_cache[prop_type]['base']
                             
-                            # Filter to selected regions
+                            # Apply per-category region filter FIRST (if set)
+                            cat_settings = per_category_settings.get(category, {})
+                            cat_regions_filter = cat_settings.get('regions')
+                            if cat_regions_filter and len(cat_regions_filter) > 0:
+                                if 'region_riga_separate' in df.columns:
+                                    df = df[df['region_riga_separate'].isin(cat_regions_filter)].copy()
+                            
+                            # Filter to index-specific regions (will be intersection with cat filter if both set)
                             df_filtered = df[df['region_riga_separate'].isin(regions_to_combine)].copy()
                             
                             if len(df_filtered) == 0:
@@ -1032,6 +1063,8 @@ def show_final_indexes_master_view():
                         
                         # Check if there are per-category filter settings
                         cat_settings = per_category_settings.get(category, {})
+                        
+                        # Note: Region filter already applied earlier (before index-level filtering)
                         
                         # Apply date filter (per-category if available, else global)
                         date_from_use = cat_settings.get('date_from') if cat_settings.get('date_from') else (date_from if enable_date_filter else None)
@@ -1423,6 +1456,9 @@ def show_final_indexes_master_view():
                         cat_settings = st.session_state.get('per_category_settings', {}).get(category, {})
                         custom_filters_applied = []
                         
+                        if cat_settings.get('regions') is not None:
+                            regions_list = ' + '.join(cat_settings['regions'])
+                            custom_filters_applied.append(f"🌍 Regions: {regions_list}")
                         if cat_settings.get('price_m2_min') is not None:
                             custom_filters_applied.append(f"Price/m²: {cat_settings['price_m2_min']}-{cat_settings['price_m2_max']} EUR")
                         if cat_settings.get('price_min') is not None:
