@@ -414,7 +414,7 @@ def show_final_indexes_master_view():
     st.markdown("### ⚙️ Analysis Settings")
     
     # Create tabs for settings organization
-    settings_tabs = st.tabs(["🎯 Basic Settings", "🔍 Outlier Detection", "💰 Price Method", "📊 Display Options"])
+    settings_tabs = st.tabs(["🎯 Basic Settings", "🔍 Outlier Detection", "💰 Price Method", "🗑️ Duplicate Removal", "📅 Filters", "📊 Display Options"])
     
     with settings_tabs[0]:
         col1, col2 = st.columns(2)
@@ -483,6 +483,71 @@ def show_final_indexes_master_view():
             )
     
     with settings_tabs[3]:
+        st.markdown("##### Duplicate Removal")
+        st.caption("Remove duplicate transactions to ensure data quality")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            duplicate_method = st.selectbox(
+                "Duplicate Removal Method",
+                ["None", "Remove exact duplicates", "Remove by Address + Date", "Remove by Address + Date + Price"],
+                help="Choose how to identify and remove duplicate transactions"
+            )
+        
+        with col2:
+            if duplicate_method != "None":
+                st.info(
+                    "**Exact duplicates**: Removes rows with identical values in all columns\n\n"
+                    "**Address + Date**: Keeps only first transaction per address per date\n\n"
+                    "**Address + Date + Price**: More strict duplicate detection"
+                )
+    
+    with settings_tabs[4]:
+        st.markdown("##### Data Filters")
+        st.caption("Filter transactions by date, price, and area")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("**Date Range**")
+            enable_date_filter = st.checkbox("Enable date filtering", value=False)
+            if enable_date_filter:
+                date_from = st.date_input("From", value=pd.Timestamp("2014-01-01"))
+                date_to = st.date_input("To", value=pd.Timestamp.now())
+            else:
+                date_from = None
+                date_to = None
+            
+            st.markdown("**Price Range (EUR)**")
+            enable_price_filter = st.checkbox("Enable price filtering", value=False)
+            if enable_price_filter:
+                price_min = st.number_input("Minimum Price", min_value=0, value=1000, step=1000)
+                price_max = st.number_input("Maximum Price", min_value=0, value=10000000, step=10000)
+            else:
+                price_min = None
+                price_max = None
+        
+        with col2:
+            st.markdown("**Area Range (m²)**")
+            enable_area_filter = st.checkbox("Enable area filtering", value=False)
+            if enable_area_filter:
+                area_min = st.number_input("Minimum Area", min_value=0.0, value=10.0, step=5.0)
+                area_max = st.number_input("Maximum Area", min_value=0.0, value=10000.0, step=50.0)
+            else:
+                area_min = None
+                area_max = None
+            
+            st.markdown("**Price per m² Range (EUR/m²)**")
+            enable_price_m2_filter = st.checkbox("Enable price/m² filtering", value=False)
+            if enable_price_m2_filter:
+                price_m2_min = st.number_input("Minimum Price/m²", min_value=0, value=100, step=50)
+                price_m2_max = st.number_input("Maximum Price/m²", min_value=0, value=10000, step=100)
+            else:
+                price_m2_min = None
+                price_m2_max = None
+    
+    with settings_tabs[5]:
         st.markdown("##### Display Options")
         
         col1, col2 = st.columns(2)
@@ -622,6 +687,48 @@ def show_final_indexes_master_view():
                         # Store original count
                         original_count = len(df_filtered)
                         
+                        # Apply date filter if enabled
+                        if enable_date_filter and date_from and date_to:
+                            df_filtered = df_filtered[
+                                (df_filtered['Date'] >= pd.Timestamp(date_from)) & 
+                                (df_filtered['Date'] <= pd.Timestamp(date_to))
+                            ].copy()
+                        
+                        # Apply price filter if enabled
+                        if enable_price_filter and price_min is not None and price_max is not None:
+                            df_filtered = df_filtered[
+                                (df_filtered['Price_EUR'] >= price_min) & 
+                                (df_filtered['Price_EUR'] <= price_max)
+                            ].copy()
+                        
+                        # Apply area filter if enabled
+                        if enable_area_filter and area_min is not None and area_max is not None:
+                            df_filtered = df_filtered[
+                                (df_filtered['Sold_Area_m2'] >= area_min) & 
+                                (df_filtered['Sold_Area_m2'] <= area_max)
+                            ].copy()
+                        
+                        # Apply price per m2 filter if enabled
+                        if enable_price_m2_filter and price_m2_min is not None and price_m2_max is not None:
+                            # Calculate price per m2 for filtering
+                            temp_price_m2 = df_filtered['Price_EUR'] / df_filtered['Sold_Area_m2']
+                            df_filtered = df_filtered[
+                                (temp_price_m2 >= price_m2_min) & 
+                                (temp_price_m2 <= price_m2_max)
+                            ].copy()
+                        
+                        # Apply duplicate removal if enabled
+                        records_before_dedup = len(df_filtered)
+                        if duplicate_method == "Remove exact duplicates":
+                            df_filtered = df_filtered.drop_duplicates(keep='first')
+                        elif duplicate_method == "Remove by Address + Date":
+                            if 'Address' in df_filtered.columns and 'Date' in df_filtered.columns:
+                                df_filtered = df_filtered.drop_duplicates(subset=['Address', 'Date'], keep='first')
+                        elif duplicate_method == "Remove by Address + Date + Price":
+                            if 'Address' in df_filtered.columns and 'Date' in df_filtered.columns and 'Price_EUR' in df_filtered.columns:
+                                df_filtered = df_filtered.drop_duplicates(subset=['Address', 'Date', 'Price_EUR'], keep='first')
+                        duplicates_removed = records_before_dedup - len(df_filtered)
+                        
                         # Apply outlier detection if enabled
                         if outlier_method != "None":
                             df_before_outliers = df_filtered.copy()
@@ -645,11 +752,17 @@ def show_final_indexes_master_view():
                             outliers_removed = 0
                         
                         # Store transaction counts and quality metrics
+                        filters_removed = original_count - records_before_dedup
+                        total_removed = (original_count - len(df_filtered))
+                        
                         transaction_counts[index_name] = {
                             'total': len(df_filtered),
                             'original': original_count,
+                            'filters_removed': filters_removed,
+                            'duplicates_removed': duplicates_removed,
                             'outliers_removed': outliers_removed,
-                            'outlier_percentage': (outliers_removed / original_count * 100) if original_count > 0 else 0
+                            'total_removed': total_removed,
+                            'removal_percentage': (total_removed / original_count * 100) if original_count > 0 else 0
                         }
                         
                         # Determine calculation method based on user selection
@@ -696,11 +809,21 @@ def show_final_indexes_master_view():
             st.session_state['show_data_quality'] = show_data_quality
             st.session_state['outlier_method'] = outlier_method
             st.session_state['price_calculation_method'] = use_total_eur_m2_master
+            st.session_state['duplicate_method'] = duplicate_method
         
         # Success message with summary
         total_transactions = sum(tc['total'] for tc in transaction_counts.values())
+        total_original = sum(tc['original'] for tc in transaction_counts.values())
+        total_removed = sum(tc['total_removed'] for tc in transaction_counts.values())
+        total_duplicates = sum(tc['duplicates_removed'] for tc in transaction_counts.values())
         total_outliers = sum(tc['outliers_removed'] for tc in transaction_counts.values())
-        st.success(f"✅ Calculated {len(final_indexes)} final indexes using {total_transactions:,} transactions ({total_outliers:,} outliers removed)")
+        total_filters = sum(tc['filters_removed'] for tc in transaction_counts.values())
+        
+        st.success(
+            f"✅ Calculated **{len(final_indexes)} final indexes** using **{total_transactions:,} transactions**\n\n"
+            f"📊 From {total_original:,} original → Removed {total_removed:,} total "
+            f"(Filters: {total_filters:,}, Duplicates: {total_duplicates:,}, Outliers: {total_outliers:,})"
+        )
     
     # Display results if available
     if 'final_indexes' in st.session_state:
@@ -714,6 +837,7 @@ def show_final_indexes_master_view():
         show_data_quality = st.session_state.get('show_data_quality', False)
         outlier_method = st.session_state.get('outlier_method', 'None')
         price_method = st.session_state.get('price_calculation_method', 'Use Existing Column')
+        duplicate_method = st.session_state.get('duplicate_method', 'None')
         
         # Create tabs
         tabs = st.tabs([
@@ -728,12 +852,14 @@ def show_final_indexes_master_view():
             st.subheader("All Final Indexes - Complete Overview")
             
             # Show analysis settings summary
-            col_info1, col_info2, col_info3 = st.columns(3)
+            col_info1, col_info2, col_info3, col_info4 = st.columns(4)
             with col_info1:
                 st.caption(f"**Outlier Method:** {outlier_method}")
             with col_info2:
-                st.caption(f"**Price Method:** {price_method}")
+                st.caption(f"**Duplicate Removal:** {duplicate_method}")
             with col_info3:
+                st.caption(f"**Price Method:** {price_method}")
+            with col_info4:
                 st.caption(f"**Moving Average:** {ma_quarters}Q" if ma_quarters > 1 else "**Moving Average:** None")
             
             st.markdown("---")
@@ -760,7 +886,11 @@ def show_final_indexes_master_view():
                 
                 # Add data quality metrics if enabled
                 if show_data_quality and index_name in transaction_counts:
-                    row_data['Outliers Removed'] = f"{transaction_counts[index_name]['outliers_removed']:,} ({transaction_counts[index_name]['outlier_percentage']:.1f}%)"
+                    tc = transaction_counts[index_name]
+                    row_data['Filters'] = f"-{tc['filters_removed']:,}"
+                    row_data['Duplicates'] = f"-{tc['duplicates_removed']:,}"
+                    row_data['Outliers'] = f"-{tc['outliers_removed']:,}"
+                    row_data['Total Removed'] = f"-{tc['total_removed']:,} ({tc['removal_percentage']:.1f}%)"
                 
                 row_data['Regions'] = ', '.join(index_info['regions'])
                 index_data.append(row_data)
@@ -795,25 +925,45 @@ def show_final_indexes_master_view():
             
             # Show transaction statistics if enabled
             if show_transaction_counts and transaction_counts:
-                st.markdown("#### 📈 Transaction Statistics")
-                col1, col2, col3, col4 = st.columns(4)
+                st.markdown("#### 📈 Data Processing Statistics")
+                col1, col2, col3 = st.columns(3)
                 
                 total_trans = sum(tc['total'] for tc in transaction_counts.values())
                 total_original = sum(tc['original'] for tc in transaction_counts.values())
-                total_outliers = sum(tc['outliers_removed'] for tc in transaction_counts.values())
-                avg_outlier_pct = (total_outliers / total_original * 100) if total_original > 0 else 0
+                total_removed = sum(tc['total_removed'] for tc in transaction_counts.values())
+                removal_pct = (total_removed / total_original * 100) if total_original > 0 else 0
                 
                 with col1:
-                    st.metric("Total Transactions", f"{total_trans:,}")
+                    st.metric("Final Transactions", f"{total_trans:,}", 
+                             delta=f"-{total_removed:,}", delta_color="off")
                 
                 with col2:
                     st.metric("Original Count", f"{total_original:,}")
                 
                 with col3:
-                    st.metric("Outliers Removed", f"{total_outliers:,}")
+                    st.metric("Total Removed", f"{total_removed:,}", 
+                             f"{removal_pct:.1f}%")
                 
-                with col4:
-                    st.metric("Outlier Rate", f"{avg_outlier_pct:.1f}%")
+                # Detailed breakdown
+                if show_data_quality:
+                    st.markdown("##### Removal Breakdown")
+                    col1, col2, col3 = st.columns(3)
+                    
+                    total_filters = sum(tc['filters_removed'] for tc in transaction_counts.values())
+                    total_duplicates = sum(tc['duplicates_removed'] for tc in transaction_counts.values())
+                    total_outliers = sum(tc['outliers_removed'] for tc in transaction_counts.values())
+                    
+                    with col1:
+                        filters_pct = (total_filters / total_original * 100) if total_original > 0 else 0
+                        st.metric("Filters", f"{total_filters:,}", f"{filters_pct:.1f}%")
+                    
+                    with col2:
+                        dup_pct = (total_duplicates / total_original * 100) if total_original > 0 else 0
+                        st.metric("Duplicates", f"{total_duplicates:,}", f"{dup_pct:.1f}%")
+                    
+                    with col3:
+                        outlier_pct = (total_outliers / total_original * 100) if total_original > 0 else 0
+                        st.metric("Outliers", f"{total_outliers:,}", f"{outlier_pct:.1f}%")
         
         # Tab 2: By Category
         with tabs[1]:
