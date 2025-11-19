@@ -333,25 +333,73 @@ def export_to_excel(summary_stats, prices_tabs, counts_tab, index_tabs):
     return output.getvalue()
 
 def show_final_indexes_master_view():
-    """Display a master view of all final indexes across property types and regions"""
-    st.subheader("📊 Final Indexes Master View - All Property Types")
-    st.caption("Comprehensive overview of price indexes across all statistical regions and property categories")
+    """Display a master view of all final indexes with predefined regional aggregations"""
+    st.subheader("📊 Final Indexes Master View - Predefined Regional Aggregations")
+    st.caption("Official index categories combining specific statistical regions")
     
     # Property types to analyze
     property_types = {
-        "Houses": {"file": "LV_houses_merged_mapped_unfiltered.csv", "base": "2020-Q1", "index_col": 0},
         "Apartments": {"file": "LV_apartments_merged_mapped_unfiltered.csv", "base": "2020-Q1", "index_col": 0},
+        "Houses": {"file": "LV_houses_merged_mapped_unfiltered.csv", "base": "2020-Q1", "index_col": 0},
+        "Land residential": {"file": "Land_residental_data_merged_processed_20251117_030224.csv", "base": "2023-Q2", "index_col": None},
         "Premises": {"file": "Premises_all_data_merged_processed_20251117_004724.csv", "base": "2022-Q2", "index_col": None},
+        "Land commercial": {"file": "Land_commercial_merged_processed_20251117.csv", "base": "2021-Q1", "index_col": None},
         "Agricultural land": {"file": "LV_agriland_merged_mapped_unfiltered.csv", "base": "2021-Q1", "index_col": 0},
         "Forest land": {"file": "LV_forestland_merged_mapped_unfiltered.csv", "base": "2023-Q2", "index_col": 0},
-        "Land commercial": {"file": "Land_commercial_merged_processed_20251117.csv", "base": "2021-Q1", "index_col": None},
-        "Land residential": {"file": "Land_residental_data_merged_processed_20251117_030224.csv", "base": "2023-Q2", "index_col": None},
         "Other land": {"file": "OTHER_LAND_NEW_data_merged_processed_20251119_122634.csv", "base": "2021-Q1", "index_col": None}
+    }
+    
+    # Define final index aggregations (matching the screenshot)
+    final_indexes_config = {
+        "LV FLATS": {
+            "property_type": "Apartments",
+            "indexes": [
+                {"name": "LV FLATS RIGA", "regions": ["Rīga"]},
+                {"name": "LV FLATS PIE-RIGA", "regions": ["Pierīga"]},
+                {"name": "LV FLATS KURZEME + VIDZEME + LATGALE + ZEMGALE", "regions": ["Kurzeme", "Vidzeme", "Latgale", "Zemgale"]}
+            ]
+        },
+        "LV HOUSES": {
+            "property_type": "Houses",
+            "indexes": [
+                {"name": "LV HOUSES PIE-RIGA", "regions": ["Pierīga"]},
+                {"name": "LV HOUSES KURZEME", "regions": ["Kurzeme"]},
+                {"name": "LV HOUSES LATGALE + ZEMGALE + VIDZEME", "regions": ["Latgale", "Zemgale", "Vidzeme"]}
+            ]
+        },
+        "LV RESIDENTIAL LAND": {
+            "property_type": "Land residential",
+            "indexes": [
+                {"name": "LV RESIDENTIAL LAND RIGA", "regions": ["Rīga"]},
+                {"name": "LV RESIDENTIAL LAND NON-RIGA", "regions": ["Pierīga", "Kurzeme", "Vidzeme", "Latgale", "Zemgale"]}
+            ]
+        },
+        "LV COMMERCIAL PROPERTY": {
+            "property_type": "Premises",
+            "indexes": [
+                {"name": "LV COMMERCIAL PROPERTY RIGA", "regions": ["Rīga"]},
+                {"name": "LV COMMERCIAL PROPERTY NON-RIGA", "regions": ["Pierīga", "Kurzeme", "Vidzeme", "Latgale", "Zemgale"]}
+            ]
+        },
+        "LV COMMERCIAL LAND": {
+            "property_type": "Land commercial",
+            "indexes": [
+                {"name": "LV COMMERCIAL LAND", "regions": ["Rīga", "Pierīga", "Kurzeme", "Vidzeme", "Latgale", "Zemgale"]}
+            ]
+        },
+        "LV AGRILAND": {
+            "property_type": "Agricultural land",
+            "indexes": [
+                {"name": "LV AGRILAND", "regions": ["Rīga", "Pierīga", "Kurzeme", "Vidzeme", "Latgale", "Zemgale"]},
+                {"name": "LV FOREST LAND", "regions": ["Rīga", "Pierīga", "Kurzeme", "Vidzeme", "Latgale", "Zemgale"], "property_type_override": "Forest land"},
+                {"name": "LV OTHER LAND", "regions": ["Rīga", "Pierīga", "Kurzeme", "Vidzeme", "Latgale", "Zemgale"], "property_type_override": "Other land"}
+            ]
+        }
     }
     
     # Settings
     st.markdown("### ⚙️ Settings")
-    col1, col2, col3 = st.columns(3)
+    col1, col2 = st.columns(2)
     
     with col1:
         use_ma = st.checkbox("Use Moving Average", value=False, help="Apply moving average smoothing to indexes")
@@ -361,370 +409,346 @@ def show_final_indexes_master_view():
             ma_quarters = 1
     
     with col2:
-        selected_property_types = st.multiselect(
-            "Property Types to Display",
-            list(property_types.keys()),
-            default=list(property_types.keys()),
-            help="Select which property types to include in the analysis"
+        selected_categories = st.multiselect(
+            "Index Categories to Display",
+            list(final_indexes_config.keys()),
+            default=list(final_indexes_config.keys()),
+            help="Select which index categories to include"
         )
     
-    with col3:
-        date_filter_enabled = st.checkbox("Filter by Date Range", value=False)
-    
-    if not selected_property_types:
-        st.warning("⚠️ Please select at least one property type")
+    if not selected_categories:
+        st.warning("⚠️ Please select at least one index category")
         return
     
     # Generate button
     if st.button("🚀 Generate Final Indexes", type="primary", use_container_width=True):
-        with st.spinner("Loading data and calculating indexes for all property types..."):
-            all_indexes = {}
-            all_latest_values = {}
-            all_regions = set()
+        with st.spinner("Loading data and calculating final indexes..."):
+            final_indexes = {}
+            loaded_data_cache = {}  # Cache loaded dataframes
             
-            for prop_type in selected_property_types:
-                try:
-                    config = property_types[prop_type]
+            # Calculate each final index
+            for category in selected_categories:
+                category_config = final_indexes_config[category]
+                
+                for index_config in category_config["indexes"]:
+                    index_name = index_config["name"]
+                    regions_to_combine = index_config["regions"]
                     
-                    # Load data
-                    if config["index_col"] is not None:
-                        df = pd.read_csv(config["file"], index_col=config["index_col"])
-                    else:
-                        df = pd.read_csv(config["file"])
+                    # Determine which property type to use
+                    prop_type = index_config.get("property_type_override", category_config["property_type"])
                     
-                    # Clean and prepare data
-                    numeric_cols = ['Sold_Area_m2', 'Total_Area_m2', 'Price_EUR', 'Total_EUR_m2', 'Land_EUR_m2', 'Interior_Area_m2']
-                    for col in numeric_cols:
-                        if col in df.columns:
-                            df[col] = clean_numeric_column(df[col])
-                    
-                    df['Date'] = pd.to_datetime(df['Date'], errors='coerce', format='%Y-%m-%d')
-                    df['Quarter'] = df['Date'].dt.quarter
-                    df['Year'] = df['Date'].dt.year
-                    df = df.dropna(subset=['Date'])
-                    df = df[(df['Year'] > 0) & (df['Quarter'] >= 1) & (df['Quarter'] <= 4)]
-                    
-                    # Determine calculation method (use Total_EUR_m2/Land_EUR_m2 for better coverage)
-                    use_total_eur_m2 = True
-                    
-                    # Aggregate and calculate index
-                    agg_df = aggregate_by_region_quarter(df, use_total_eur_m2, prop_type)
-                    prices_table = create_prices_table(agg_df, ma_quarters=ma_quarters)
-                    index_table = create_index_table(prices_table, prop_type)
-                    
-                    all_indexes[prop_type] = index_table
-                    all_regions.update(index_table.index.tolist())
-                    
-                    # Get latest values
-                    if len(index_table.columns) > 0:
-                        latest_quarter = index_table.columns[-1]
-                        all_latest_values[prop_type] = {
-                            'quarter': latest_quarter,
-                            'values': index_table[latest_quarter].to_dict()
-                        }
-                    
-                except Exception as e:
-                    st.warning(f"⚠️ Could not load {prop_type}: {str(e)}")
-                    continue
+                    try:
+                        # Load data if not already cached
+                        if prop_type not in loaded_data_cache:
+                            config = property_types[prop_type]
+                            
+                            # Load data
+                            if config["index_col"] is not None:
+                                df = pd.read_csv(config["file"], index_col=config["index_col"])
+                            else:
+                                df = pd.read_csv(config["file"])
+                            
+                            # Clean and prepare data
+                            numeric_cols = ['Sold_Area_m2', 'Total_Area_m2', 'Price_EUR', 'Total_EUR_m2', 'Land_EUR_m2', 'Interior_Area_m2']
+                            for col in numeric_cols:
+                                if col in df.columns:
+                                    df[col] = clean_numeric_column(df[col])
+                            
+                            df['Date'] = pd.to_datetime(df['Date'], errors='coerce', format='%Y-%m-%d')
+                            df['Quarter'] = df['Date'].dt.quarter
+                            df['Year'] = df['Date'].dt.year
+                            df = df.dropna(subset=['Date'])
+                            df = df[(df['Year'] > 0) & (df['Quarter'] >= 1) & (df['Quarter'] <= 4)]
+                            
+                            loaded_data_cache[prop_type] = {
+                                'data': df,
+                                'base': config["base"]
+                            }
+                        
+                        # Get cached data
+                        df = loaded_data_cache[prop_type]['data'].copy()
+                        base_period = loaded_data_cache[prop_type]['base']
+                        
+                        # Filter to selected regions
+                        df_filtered = df[df['region_riga_separate'].isin(regions_to_combine)].copy()
+                        
+                        if len(df_filtered) == 0:
+                            st.warning(f"⚠️ No data found for {index_name}")
+                            continue
+                        
+                        # Relabel all regions as the index name for aggregation
+                        df_filtered['region_riga_separate'] = index_name
+                        
+                        # Determine calculation method (use Total_EUR_m2/Land_EUR_m2 for better coverage)
+                        use_total_eur_m2 = True
+                        
+                        # Aggregate and calculate index
+                        agg_df = aggregate_by_region_quarter(df_filtered, use_total_eur_m2, prop_type)
+                        prices_table = create_prices_table(agg_df, ma_quarters=ma_quarters)
+                        
+                        # Extract base period info
+                        base_year = int(base_period.split('-')[0])
+                        base_quarter = int(base_period.split('-Q')[1])
+                        
+                        index_table = create_index_table(prices_table, prop_type, base_year, base_quarter)
+                        
+                        # Store the index (it should have one row with the index_name)
+                        if len(index_table) > 0:
+                            final_indexes[index_name] = {
+                                'index': index_table.loc[index_name] if index_name in index_table.index else index_table.iloc[0],
+                                'category': category,
+                                'base': base_period,
+                                'regions': regions_to_combine
+                            }
+                        
+                    except Exception as e:
+                        st.warning(f"⚠️ Could not calculate {index_name}: {str(e)}")
+                        continue
             
-            if not all_indexes:
-                st.error("❌ No data could be loaded. Please check your data files.")
+            if not final_indexes:
+                st.error("❌ No indexes could be calculated. Please check your data files.")
                 return
             
             # Store in session state
-            st.session_state['master_indexes'] = all_indexes
-            st.session_state['master_latest'] = all_latest_values
-            st.session_state['master_regions'] = sorted(list(all_regions))
-            st.session_state['master_property_types'] = selected_property_types
+            st.session_state['final_indexes'] = final_indexes
+            st.session_state['master_categories'] = selected_categories
             st.session_state['master_ma_quarters'] = ma_quarters
         
-        st.success(f"✅ Loaded indexes for {len(all_indexes)} property types!")
+        st.success(f"✅ Calculated {len(final_indexes)} final indexes!")
     
     # Display results if available
-    if 'master_indexes' in st.session_state:
+    if 'final_indexes' in st.session_state:
         st.markdown("---")
         st.header("📈 Final Index Results")
         
-        all_indexes = st.session_state['master_indexes']
-        all_latest_values = st.session_state['master_latest']
-        all_regions = st.session_state['master_regions']
+        final_indexes = st.session_state['final_indexes']
         ma_quarters = st.session_state.get('master_ma_quarters', 1)
         
         # Create tabs
         tabs = st.tabs([
-            "📊 Latest Index Values",
-            "🗺️ By Region",
-            "📦 By Property Type",
-            "📈 Comprehensive Table",
-            "📉 Time Series Comparison"
+            "📊 All Final Indexes",
+            "📈 By Category",
+            "📉 Time Series",
+            "📥 Export"
         ])
         
-        # Tab 1: Latest Index Values
+        # Tab 1: All Final Indexes
         with tabs[0]:
-            st.subheader("Latest Index Values by Property Type and Region")
-            st.caption("Most recent quarter index values (Base period = 1.0 for each property type)")
+            st.subheader("All Final Indexes - Complete Overview")
+            st.caption("All calculated final indexes with latest values")
             
-            # Create a comprehensive table
-            latest_data = []
-            for prop_type, latest_info in all_latest_values.items():
-                quarter = latest_info['quarter']
-                for region, value in latest_info['values'].items():
-                    latest_data.append({
-                        'Property Type': prop_type,
-                        'Region': region,
-                        'Quarter': quarter,
-                        'Index': value,
-                        'Change vs Base': f"{(value - 1.0) * 100:.1f}%"
-                    })
+            # Create comprehensive table
+            index_data = []
+            for index_name, index_info in final_indexes.items():
+                index_series = index_info['index']
+                latest_value = index_series.iloc[-1]
+                latest_quarter = index_series.index[-1]
+                
+                index_data.append({
+                    'Index Name': index_name,
+                    'Category': index_info['category'],
+                    'Latest Quarter': latest_quarter,
+                    'Latest Index': latest_value,
+                    'Change vs Base': f"{(latest_value - 1.0) * 100:.1f}%",
+                    'Base Period': index_info['base'],
+                    'Regions': ', '.join(index_info['regions'])
+                })
             
-            latest_df = pd.DataFrame(latest_data)
+            display_df = pd.DataFrame(index_data)
+            st.dataframe(display_df, use_container_width=True, hide_index=True)
             
-            if len(latest_df) > 0:
-                # Pivot table for better visualization
-                pivot_latest = latest_df.pivot_table(
-                    index='Region',
-                    columns='Property Type',
-                    values='Index',
-                    aggfunc='first'
-                )
-                
-                st.dataframe(
-                    pivot_latest.round(4),
-                    use_container_width=True,
-                    height=400
-                )
-                
-                # Summary statistics
-                st.markdown("#### 📊 Summary Statistics")
-                col1, col2, col3, col4 = st.columns(4)
-                
-                with col1:
-                    st.metric("Highest Index", f"{latest_df['Index'].max():.3f}", 
-                             f"{(latest_df['Index'].max() - 1.0) * 100:.1f}%")
-                
-                with col2:
-                    st.metric("Lowest Index", f"{latest_df['Index'].min():.3f}",
-                             f"{(latest_df['Index'].min() - 1.0) * 100:.1f}%")
-                
-                with col3:
-                    st.metric("Average Index", f"{latest_df['Index'].mean():.3f}",
-                             f"{(latest_df['Index'].mean() - 1.0) * 100:.1f}%")
-                
-                with col4:
-                    st.metric("Median Index", f"{latest_df['Index'].median():.3f}",
-                             f"{(latest_df['Index'].median() - 1.0) * 100:.1f}%")
+            # Summary statistics
+            st.markdown("#### 📊 Summary Statistics")
+            col1, col2, col3, col4 = st.columns(4)
+            
+            with col1:
+                max_idx = display_df['Latest Index'].max()
+                st.metric("Highest Index", f"{max_idx:.3f}", 
+                         f"+{(max_idx - 1.0) * 100:.1f}%")
+            
+            with col2:
+                min_idx = display_df['Latest Index'].min()
+                st.metric("Lowest Index", f"{min_idx:.3f}",
+                         f"{(min_idx - 1.0) * 100:.1f}%")
+            
+            with col3:
+                avg_idx = display_df['Latest Index'].mean()
+                st.metric("Average Index", f"{avg_idx:.3f}",
+                         f"{(avg_idx - 1.0) * 100:.1f}%")
+            
+            with col4:
+                st.metric("Total Indexes", len(final_indexes))
         
-        # Tab 2: By Region
+        # Tab 2: By Category
         with tabs[1]:
-            st.subheader("Index Values by Statistical Region")
+            st.subheader("Final Indexes by Category")
+            st.caption("View all indexes grouped by index category")
             
-            selected_region = st.selectbox(
-                "Select Region to Analyze",
-                all_regions,
-                key="master_region_selector"
-            )
+            # Group indexes by category
+            categories = {}
+            for index_name, index_info in final_indexes.items():
+                category = index_info['category']
+                if category not in categories:
+                    categories[category] = []
+                categories[category].append((index_name, index_info))
             
-            if selected_region:
-                st.markdown(f"### 📍 {selected_region}")
-                
-                # Create comparison table for this region
-                region_data = []
-                for prop_type, index_df in all_indexes.items():
-                    if selected_region in index_df.index:
-                        latest_val = index_df.loc[selected_region].iloc[-1]
-                        base_val = index_df.loc[selected_region].iloc[0]
+            # Display each category
+            for category, indexes in categories.items():
+                with st.expander(f"📂 {category}", expanded=True):
+                    # Create table for this category
+                    cat_data = []
+                    for index_name, index_info in indexes:
+                        index_series = index_info['index']
+                        latest_value = index_series.iloc[-1]
+                        latest_quarter = index_series.index[-1]
                         
-                        region_data.append({
-                            'Property Type': prop_type,
-                            'Latest Index': latest_val,
-                            'Base Index': base_val,
-                            'Total Change': f"{(latest_val - base_val) * 100:.1f}%",
-                            'Latest Quarter': index_df.columns[-1]
+                        cat_data.append({
+                            'Index Name': index_name,
+                            'Latest Quarter': latest_quarter,
+                            'Latest Index': f"{latest_value:.4f}",
+                            'Change vs Base': f"{(latest_value - 1.0) * 100:.1f}%",
+                            'Regions': ', '.join(index_info['regions'])
                         })
-                
-                region_df = pd.DataFrame(region_data)
-                st.dataframe(region_df, use_container_width=True, hide_index=True)
-                
-                # Plot time series for this region
-                st.markdown("#### 📉 Index Evolution Over Time")
-                
-                fig_region = go.Figure()
-                
-                for prop_type, index_df in all_indexes.items():
-                    if selected_region in index_df.index:
-                        fig_region.add_trace(go.Scatter(
-                            x=index_df.columns,
-                            y=index_df.loc[selected_region],
+                    
+                    cat_df = pd.DataFrame(cat_data)
+                    st.dataframe(cat_df, use_container_width=True, hide_index=True)
+                    
+                    # Plot for this category
+                    fig_cat = go.Figure()
+                    for index_name, index_info in indexes:
+                        index_series = index_info['index']
+                        fig_cat.add_trace(go.Scatter(
+                            x=index_series.index,
+                            y=index_series.values,
                             mode='lines+markers',
-                            name=prop_type,
+                            name=index_name,
                             line=dict(width=2),
                             marker=dict(size=6)
                         ))
-                
-                fig_region.update_layout(
-                    title=f"Price Index Evolution - {selected_region}",
-                    xaxis_title="Quarter",
-                    yaxis_title="Index (Base = 1.0)",
-                    hovermode='x unified',
-                    height=500,
-                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-                )
-                
-                fig_region.update_xaxes(tickangle=45)
-                st.plotly_chart(fig_region, use_container_width=True)
+                    
+                    fig_cat.update_layout(
+                        title=f"{category} - Index Evolution",
+                        xaxis_title="Quarter",
+                        yaxis_title="Index (Base = 1.0)",
+                        hovermode='x unified',
+                        height=400,
+                        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+                    )
+                    fig_cat.update_xaxes(tickangle=45)
+                    st.plotly_chart(fig_cat, use_container_width=True)
         
-        # Tab 3: By Property Type
+        # Tab 3: Time Series
         with tabs[2]:
-            st.subheader("Index Values by Property Type")
+            st.subheader("Time Series Comparison")
+            st.caption("Compare multiple final indexes over time")
             
-            selected_prop = st.selectbox(
-                "Select Property Type to Analyze",
-                list(all_indexes.keys()),
-                key="master_prop_selector"
+            # Select indexes to compare
+            index_names = list(final_indexes.keys())
+            selected_indexes = st.multiselect(
+                "Select indexes to compare",
+                index_names,
+                default=index_names[:5] if len(index_names) > 5 else index_names,
+                key="timeseries_indexes"
             )
             
-            if selected_prop:
-                st.markdown(f"### 🏠 {selected_prop}")
+            if selected_indexes:
+                # Create comparison plot
+                fig_ts = go.Figure()
                 
-                index_df = all_indexes[selected_prop]
-                
-                # Display full table
-                st.dataframe(
-                    index_df.round(4),
-                    use_container_width=True,
-                    height=400
-                )
-                
-                # Plot
-                st.markdown("#### 📉 Regional Comparison")
-                
-                fig_prop = go.Figure()
-                
-                for region in index_df.index:
-                    fig_prop.add_trace(go.Scatter(
-                        x=index_df.columns,
-                        y=index_df.loc[region],
+                for index_name in selected_indexes:
+                    index_info = final_indexes[index_name]
+                    index_series = index_info['index']
+                    
+                    fig_ts.add_trace(go.Scatter(
+                        x=index_series.index,
+                        y=index_series.values,
                         mode='lines+markers',
-                        name=region,
+                        name=index_name,
                         line=dict(width=2),
-                        marker=dict(size=6)
+                        marker=dict(size=5)
                     ))
                 
-                fig_prop.update_layout(
-                    title=f"Price Index by Region - {selected_prop}",
-                    xaxis_title="Quarter",
-                    yaxis_title="Index (Base = 1.0)",
-                    hovermode='x unified',
-                    height=500,
-                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-                )
-                
-                fig_prop.update_xaxes(tickangle=45)
-                st.plotly_chart(fig_prop, use_container_width=True)
-        
-        # Tab 4: Comprehensive Table
-        with tabs[3]:
-            st.subheader("Comprehensive Index Table - All Property Types & Regions")
-            
-            # Create a multi-level table
-            for prop_type, index_df in all_indexes.items():
-                with st.expander(f"📂 {prop_type}", expanded=False):
-                    st.dataframe(
-                        index_df.round(4),
-                        use_container_width=True
-                    )
-                    
-                    # Download button for this property type
-                    csv = index_df.to_csv()
-                    st.download_button(
-                        label=f"⬇️ Download {prop_type} Index CSV",
-                        data=csv,
-                        file_name=f"index_{prop_type.lower().replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.csv",
-                        mime="text/csv",
-                        key=f"download_{prop_type}"
-                    )
-        
-        # Tab 5: Time Series Comparison
-        with tabs[4]:
-            st.subheader("Time Series Comparison - Multi-Property Analysis")
-            
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                comparison_regions = st.multiselect(
-                    "Select Regions to Compare",
-                    all_regions,
-                    default=all_regions[:3] if len(all_regions) > 3 else all_regions,
-                    key="comparison_regions"
-                )
-            
-            with col2:
-                comparison_props = st.multiselect(
-                    "Select Property Types to Compare",
-                    list(all_indexes.keys()),
-                    default=list(all_indexes.keys())[:3] if len(all_indexes) > 3 else list(all_indexes.keys()),
-                    key="comparison_props"
-                )
-            
-            if comparison_regions and comparison_props:
-                # Create comprehensive comparison plot
-                fig_comparison = go.Figure()
-                
-                for prop_type in comparison_props:
-                    index_df = all_indexes[prop_type]
-                    for region in comparison_regions:
-                        if region in index_df.index:
-                            fig_comparison.add_trace(go.Scatter(
-                                x=index_df.columns,
-                                y=index_df.loc[region],
-                                mode='lines+markers',
-                                name=f"{region} - {prop_type}",
-                                line=dict(width=2),
-                                marker=dict(size=5)
-                            ))
-                
-                fig_comparison.update_layout(
-                    title="Comprehensive Price Index Comparison",
+                fig_ts.update_layout(
+                    title="Final Indexes Comparison",
                     xaxis_title="Quarter",
                     yaxis_title="Index (Base = 1.0)",
                     hovermode='x unified',
                     height=600,
                     legend=dict(orientation="v", yanchor="top", y=1, xanchor="left", x=1.02)
                 )
+                fig_ts.update_xaxes(tickangle=45)
+                st.plotly_chart(fig_ts, use_container_width=True)
                 
-                fig_comparison.update_xaxes(tickangle=45)
-                st.plotly_chart(fig_comparison, use_container_width=True)
+                # Data table
+                st.markdown("### 📊 Index Values Table")
+                
+                # Create comparison table
+                comparison_data = {}
+                for index_name in selected_indexes:
+                    index_series = final_indexes[index_name]['index']
+                    comparison_data[index_name] = index_series
+                
+                comparison_df = pd.DataFrame(comparison_data).T
+                st.dataframe(comparison_df.round(4), use_container_width=True)
             else:
-                st.info("👆 Select regions and property types to see the comparison")
+                st.info("👆 Select at least one index to view the time series")
         
-        # Export section
-        st.markdown("---")
-        st.header("📥 Export All Final Indexes")
-        
-        if st.button("📊 Generate Comprehensive Excel Report", type="secondary"):
-            with st.spinner("Generating comprehensive Excel report..."):
+        # Tab 4: Export
+        with tabs[3]:
+            st.subheader("Export Final Indexes")
+            st.caption("Download final indexes in various formats")
+            
+            # Create comprehensive dataframe
+            all_data = {}
+            for index_name, index_info in final_indexes.items():
+                all_data[index_name] = index_info['index']
+            
+            export_df = pd.DataFrame(all_data).T
+            
+            # Display preview
+            st.markdown("### 📋 Preview")
+            st.dataframe(export_df.round(4), use_container_width=True, height=300)
+            
+            # Download buttons
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                # CSV download
+                csv_data = export_df.to_csv()
+                st.download_button(
+                    label="⬇️ Download CSV",
+                    data=csv_data,
+                    file_name=f"latvia_final_indexes_{datetime.now().strftime('%Y%m%d')}.csv",
+                    mime="text/csv",
+                    use_container_width=True
+                )
+            
+            with col2:
+                # Excel download
                 output = io.BytesIO()
-                
                 with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                    # Write latest values summary
-                    if len(latest_df) > 0:
-                        pivot_latest.to_excel(writer, sheet_name='Latest Values')
+                    export_df.to_excel(writer, sheet_name='Final Indexes')
                     
-                    # Write each property type index
-                    for prop_type, index_df in all_indexes.items():
-                        sheet_name = prop_type[:31]  # Excel sheet name limit
-                        index_df.to_excel(writer, sheet_name=sheet_name)
+                    # Add metadata sheet
+                    metadata = []
+                    for index_name, index_info in final_indexes.items():
+                        metadata.append({
+                            'Index Name': index_name,
+                            'Category': index_info['category'],
+                            'Base Period': index_info['base'],
+                            'Regions': ', '.join(index_info['regions'])
+                        })
+                    metadata_df = pd.DataFrame(metadata)
+                    metadata_df.to_excel(writer, sheet_name='Metadata', index=False)
                 
                 excel_data = output.getvalue()
-                
                 st.download_button(
-                    label="⬇️ Download Comprehensive Excel Report",
+                    label="⬇️ Download Excel",
                     data=excel_data,
-                    file_name=f"latvia_final_indexes_master_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    file_name=f"latvia_final_indexes_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True
                 )
-                
-                st.success("✅ Excel report ready for download!")
 
 # Main app
 def main():
