@@ -349,8 +349,142 @@ def export_to_excel(summary_stats, prices_tabs, counts_tab, index_tabs):
 
 def show_final_indexes_master_view():
     """Display a master view of all final indexes with predefined regional aggregations"""
-    st.subheader("📊 Final Indexes Master View - Predefined Regional Aggregations")
+    
+    # Custom CSS for better UI
+    st.markdown("""
+    <style>
+    /* Settings section styling */
+    .settings-container {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        padding: 20px;
+        border-radius: 10px;
+        margin-bottom: 20px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+    
+    /* Results section styling */
+    .results-container {
+        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        padding: 20px;
+        border-radius: 10px;
+        margin-bottom: 20px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+    
+    /* Data section background */
+    .data-section {
+        background-color: #f8f9fa;
+        padding: 20px;
+        border-radius: 10px;
+        border-left: 5px solid #667eea;
+        margin-bottom: 20px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    }
+    
+    /* Category section */
+    .category-section {
+        background-color: #fff5f5;
+        padding: 15px;
+        border-radius: 8px;
+        border-left: 4px solid #f5576c;
+        margin-bottom: 15px;
+    }
+    
+    /* Filter section */
+    .filter-section {
+        background-color: #f0f9ff;
+        padding: 15px;
+        border-radius: 8px;
+        border-left: 4px solid #3b82f6;
+        margin-bottom: 15px;
+    }
+    
+    /* Success/info boxes */
+    .success-box {
+        background-color: #d1fae5;
+        padding: 15px;
+        border-radius: 8px;
+        border-left: 4px solid #10b981;
+        margin: 10px 0;
+    }
+    
+    /* Warning boxes */
+    .warning-box {
+        background-color: #fef3c7;
+        padding: 15px;
+        border-radius: 8px;
+        border-left: 4px solid #f59e0b;
+        margin: 10px 0;
+    }
+    
+    /* Tab styling */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 8px;
+        background-color: #f8f9fa;
+        padding: 10px;
+        border-radius: 10px;
+    }
+    
+    .stTabs [data-baseweb="tab"] {
+        background-color: white;
+        border-radius: 8px;
+        padding: 10px 20px;
+        border: 2px solid #e5e7eb;
+    }
+    
+    .stTabs [aria-selected="true"] {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white !important;
+        border: 2px solid #667eea;
+    }
+    
+    /* Expander styling */
+    .streamlit-expanderHeader {
+        background-color: #f8f9fa;
+        border-radius: 8px;
+        border-left: 4px solid #667eea;
+        font-weight: 600;
+    }
+    
+    /* Metric cards */
+    [data-testid="stMetricValue"] {
+        font-size: 28px;
+        font-weight: 700;
+    }
+    
+    /* Section divider */
+    .section-divider {
+        height: 3px;
+        background: linear-gradient(to right, #667eea, #764ba2, #f093fb);
+        margin: 30px 0;
+        border-radius: 2px;
+    }
+    
+    /* Header styling */
+    h1, h2, h3 {
+        color: #1f2937;
+    }
+    
+    /* Button styling enhancement */
+    .stButton>button {
+        border-radius: 8px;
+        font-weight: 600;
+        transition: all 0.3s;
+    }
+    
+    .stButton>button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
+    st.markdown('<div class="settings-container">', unsafe_allow_html=True)
+    st.markdown("## 📊 Final Indexes Master View")
     st.caption("Official index categories combining specific statistical regions")
+    st.markdown('</div>', unsafe_allow_html=True)
+    
+    st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
     
     # Property types to analyze
     property_types = {
@@ -411,7 +545,9 @@ def show_final_indexes_master_view():
     }
     
     # Settings
+    st.markdown('<div class="filter-section">', unsafe_allow_html=True)
     st.markdown("### ⚙️ Analysis Settings")
+    st.caption("Configure data processing and filtering options")
     
     # Create tabs for settings organization
     settings_tabs = st.tabs(["🎯 Basic Settings", "💰 Price Method", "🗑️ Duplicate Removal", "📅 Filters", "📊 Display Options"])
@@ -605,9 +741,13 @@ def show_final_indexes_master_view():
             show_data_quality = st.checkbox("Show data quality metrics", value=False,
                                            help="Display outlier removal statistics and data coverage")
     
+    st.markdown('</div>', unsafe_allow_html=True)
+    
     if not selected_categories:
         st.warning("⚠️ Please select at least one index category")
         return
+    
+    st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
     
     # Generate button
     if st.button("🚀 Generate Final Indexes", type="primary", use_container_width=True):
@@ -911,16 +1051,26 @@ def show_final_indexes_master_view():
         total_outliers = sum(tc['outliers_removed'] for tc in transaction_counts.values())
         total_filters = sum(tc['filters_removed'] for tc in transaction_counts.values())
         
-        st.success(
-            f"✅ Calculated **{len(final_indexes)} final indexes** using **{total_transactions:,} transactions**\n\n"
-            f"📊 From {total_original:,} original → Removed {total_removed:,} total "
-            f"(Filters: {total_filters:,}, Duplicates: {total_duplicates:,}, Outliers: {total_outliers:,})"
+        st.markdown(
+            f"""
+            <div class="success-box">
+                <h3>✅ Indexes Calculated Successfully!</h3>
+                <p><strong>{len(final_indexes)} final indexes</strong> using <strong>{total_transactions:,} transactions</strong></p>
+                <p>📊 From {total_original:,} original → Removed {total_removed:,} total 
+                (Filters: {total_filters:,}, Duplicates: {total_duplicates:,}, Outliers: {total_outliers:,})</p>
+            </div>
+            """,
+            unsafe_allow_html=True
         )
     
     # Display results if available
     if 'final_indexes' in st.session_state:
-        st.markdown("---")
-        st.header("📈 Final Index Results")
+        st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
+        
+        st.markdown('<div class="results-container">', unsafe_allow_html=True)
+        st.markdown("## 📈 Final Index Results")
+        st.caption("View, analyze, and export your calculated indexes")
+        st.markdown('</div>', unsafe_allow_html=True)
         
         final_indexes = st.session_state['final_indexes']
         initial_indexes = st.session_state.get('initial_indexes', {})
@@ -943,6 +1093,7 @@ def show_final_indexes_master_view():
         
         # Tab 1: All Final Indexes
         with tabs[0]:
+            st.markdown('<div class="data-section">', unsafe_allow_html=True)
             st.subheader("All Final Indexes - Complete Overview")
             
             # Show analysis settings summary
@@ -1058,9 +1209,12 @@ def show_final_indexes_master_view():
                     with col3:
                         outlier_pct = (total_outliers / total_original * 100) if total_original > 0 else 0
                         st.metric("Outliers", f"{total_outliers:,}", f"{outlier_pct:.1f}%")
+            
+            st.markdown('</div>', unsafe_allow_html=True)
         
         # Tab 2: By Category
         with tabs[1]:
+            st.markdown('<div class="data-section">', unsafe_allow_html=True)
             st.subheader("Final Indexes by Category")
             st.caption("View all indexes grouped by index category with per-category filter controls")
             
@@ -1075,6 +1229,8 @@ def show_final_indexes_master_view():
             # Display each category
             for category, indexes in categories.items():
                 with st.expander(f"📂 {category}", expanded=True):
+                    st.markdown('<div class="category-section">', unsafe_allow_html=True)
+                    
                     # Show if custom filters were applied to this category
                     if st.session_state.get('use_per_category_filters', False):
                         cat_settings = st.session_state.get('per_category_settings', {}).get(category, {})
@@ -1182,9 +1338,14 @@ def show_final_indexes_master_view():
                     )
                     fig_counts.update_xaxes(tickangle=45)
                     st.plotly_chart(fig_counts, use_container_width=True)
+                    
+                    st.markdown('</div>', unsafe_allow_html=True)
+            
+            st.markdown('</div>', unsafe_allow_html=True)
         
         # Tab 3: Time Series
         with tabs[2]:
+            st.markdown('<div class="data-section">', unsafe_allow_html=True)
             st.subheader("Time Series Comparison")
             st.caption("Compare multiple final indexes over time (showing post-filter results)")
             
@@ -1458,9 +1619,12 @@ def show_final_indexes_master_view():
                 st.dataframe(comparison_df.round(4), use_container_width=True)
             else:
                 st.info("👆 Select at least one index to view the time series")
+            
+            st.markdown('</div>', unsafe_allow_html=True)
         
         # Tab 4: Boxplot Analysis
         with tabs[3]:
+            st.markdown('<div class="data-section">', unsafe_allow_html=True)
             st.subheader("📦 Price Distribution Boxplot Analysis")
             st.caption("Visualize price per m² distributions by quarter with configurable outlier thresholds")
             
@@ -1742,9 +1906,12 @@ def show_final_indexes_master_view():
                         file_name=f"{selected_index_for_boxplot}_filtered_{threshold_min:.0f}_{threshold_max:.0f}.csv",
                         mime="text/csv"
                     )
+            
+            st.markdown('</div>', unsafe_allow_html=True)
         
         # Tab 5: Export
         with tabs[4]:
+            st.markdown('<div class="data-section">', unsafe_allow_html=True)
             st.subheader("Export Final Indexes")
             st.caption("Download final indexes in various formats")
             
@@ -1799,6 +1966,8 @@ def show_final_indexes_master_view():
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     use_container_width=True
                 )
+            
+            st.markdown('</div>', unsafe_allow_html=True)
 
 # Main app
 def main():
