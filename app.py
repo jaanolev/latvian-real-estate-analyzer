@@ -433,6 +433,71 @@ def show_final_indexes_master_view():
                 ma_quarters = st.slider("Moving Average Window (Quarters)", 2, 4, 2)
             else:
                 ma_quarters = 1
+        
+        st.markdown("---")
+        st.markdown("#### 🎯 Per-Category Filter Configuration")
+        st.caption("Set custom filters for specific index categories (optional - overrides global filters)")
+        
+        use_per_category_filters = st.checkbox("Enable per-category filters", value=False, 
+                                               help="Configure different filters for each index category")
+        
+        per_category_settings = {}
+        
+        if use_per_category_filters:
+            for category in list(final_indexes_config.keys()):
+                with st.expander(f"⚙️ Filters for {category}"):
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        st.markdown("**Price/m² Range**")
+                        use_price_m2 = st.checkbox(f"Custom price/m² filter", key=f"cat_price_m2_{category}")
+                        if use_price_m2:
+                            cat_price_m2_min = st.number_input(f"Min", 0, 50000, 100, 50, key=f"cat_price_m2_min_{category}")
+                            cat_price_m2_max = st.number_input(f"Max", 0, 50000, 10000, 100, key=f"cat_price_m2_max_{category}")
+                        else:
+                            cat_price_m2_min = None
+                            cat_price_m2_max = None
+                        
+                        st.markdown("**Price Range (EUR)**")
+                        use_price = st.checkbox(f"Custom price filter", key=f"cat_price_{category}")
+                        if use_price:
+                            cat_price_min = st.number_input(f"Min", 0, 10000000, 1000, 1000, key=f"cat_price_min_{category}")
+                            cat_price_max = st.number_input(f"Max", 0, 10000000, 10000000, 10000, key=f"cat_price_max_{category}")
+                        else:
+                            cat_price_min = None
+                            cat_price_max = None
+                    
+                    with col2:
+                        st.markdown("**Area Range (m²)**")
+                        use_area = st.checkbox(f"Custom area filter", key=f"cat_area_{category}")
+                        if use_area:
+                            cat_area_min = st.number_input(f"Min", 0.0, 100000.0, 10.0, 5.0, key=f"cat_area_min_{category}")
+                            cat_area_max = st.number_input(f"Max", 0.0, 100000.0, 10000.0, 50.0, key=f"cat_area_max_{category}")
+                        else:
+                            cat_area_min = None
+                            cat_area_max = None
+                        
+                        st.markdown("**Date Range**")
+                        use_date = st.checkbox(f"Custom date filter", key=f"cat_date_{category}")
+                        if use_date:
+                            cat_date_from = st.date_input(f"From", pd.Timestamp("2014-01-01"), key=f"cat_date_from_{category}")
+                            cat_date_to = st.date_input(f"To", pd.Timestamp.now(), key=f"cat_date_to_{category}")
+                        else:
+                            cat_date_from = None
+                            cat_date_to = None
+                    
+                    per_category_settings[category] = {
+                        'price_m2_min': cat_price_m2_min,
+                        'price_m2_max': cat_price_m2_max,
+                        'price_min': cat_price_min,
+                        'price_max': cat_price_max,
+                        'area_min': cat_area_min,
+                        'area_max': cat_area_max,
+                        'date_from': cat_date_from,
+                        'date_to': cat_date_to
+                    }
+        else:
+            per_category_settings = {}
     
     # Set outlier detection to None (use Boxplot tab for expert outlier control)
     outlier_method = "None"
@@ -690,34 +755,49 @@ def show_final_indexes_master_view():
                             st.warning(f"Could not calculate initial index for {index_name}: {str(e)}")
                             initial_indexes[index_name] = None
                         
-                        # Apply date filter if enabled
-                        if enable_date_filter and date_from and date_to:
+                        # Check if there are per-category filter settings
+                        cat_settings = per_category_settings.get(category, {})
+                        
+                        # Apply date filter (per-category if available, else global)
+                        date_from_use = cat_settings.get('date_from') if cat_settings.get('date_from') else (date_from if enable_date_filter else None)
+                        date_to_use = cat_settings.get('date_to') if cat_settings.get('date_to') else (date_to if enable_date_filter else None)
+                        
+                        if date_from_use and date_to_use:
                             df_filtered = df_filtered[
-                                (df_filtered['Date'] >= pd.Timestamp(date_from)) & 
-                                (df_filtered['Date'] <= pd.Timestamp(date_to))
+                                (df_filtered['Date'] >= pd.Timestamp(date_from_use)) & 
+                                (df_filtered['Date'] <= pd.Timestamp(date_to_use))
                             ].copy()
                         
-                        # Apply price filter if enabled
-                        if enable_price_filter and price_min is not None and price_max is not None:
+                        # Apply price filter (per-category if available, else global)
+                        price_min_use = cat_settings.get('price_min') if cat_settings.get('price_min') is not None else (price_min if enable_price_filter else None)
+                        price_max_use = cat_settings.get('price_max') if cat_settings.get('price_max') is not None else (price_max if enable_price_filter else None)
+                        
+                        if price_min_use is not None and price_max_use is not None:
                             df_filtered = df_filtered[
-                                (df_filtered['Price_EUR'] >= price_min) & 
-                                (df_filtered['Price_EUR'] <= price_max)
+                                (df_filtered['Price_EUR'] >= price_min_use) & 
+                                (df_filtered['Price_EUR'] <= price_max_use)
                             ].copy()
                         
-                        # Apply area filter if enabled
-                        if enable_area_filter and area_min is not None and area_max is not None:
+                        # Apply area filter (per-category if available, else global)
+                        area_min_use = cat_settings.get('area_min') if cat_settings.get('area_min') is not None else (area_min if enable_area_filter else None)
+                        area_max_use = cat_settings.get('area_max') if cat_settings.get('area_max') is not None else (area_max if enable_area_filter else None)
+                        
+                        if area_min_use is not None and area_max_use is not None:
                             df_filtered = df_filtered[
-                                (df_filtered['Sold_Area_m2'] >= area_min) & 
-                                (df_filtered['Sold_Area_m2'] <= area_max)
+                                (df_filtered['Sold_Area_m2'] >= area_min_use) & 
+                                (df_filtered['Sold_Area_m2'] <= area_max_use)
                             ].copy()
                         
-                        # Apply price per m2 filter if enabled
-                        if enable_price_m2_filter and price_m2_min is not None and price_m2_max is not None:
+                        # Apply price per m2 filter (per-category if available, else global)
+                        price_m2_min_use = cat_settings.get('price_m2_min') if cat_settings.get('price_m2_min') is not None else (price_m2_min if enable_price_m2_filter else None)
+                        price_m2_max_use = cat_settings.get('price_m2_max') if cat_settings.get('price_m2_max') is not None else (price_m2_max if enable_price_m2_filter else None)
+                        
+                        if price_m2_min_use is not None and price_m2_max_use is not None:
                             # Calculate price per m2 for filtering
                             temp_price_m2 = df_filtered['Price_EUR'] / df_filtered['Sold_Area_m2']
                             df_filtered = df_filtered[
-                                (temp_price_m2 >= price_m2_min) & 
-                                (temp_price_m2 <= price_m2_max)
+                                (temp_price_m2 >= price_m2_min_use) & 
+                                (temp_price_m2 <= price_m2_max_use)
                             ].copy()
                         
                         # Apply duplicate removal if enabled
@@ -820,6 +900,8 @@ def show_final_indexes_master_view():
             st.session_state['enable_price_filter'] = enable_price_filter
             st.session_state['enable_area_filter'] = enable_area_filter
             st.session_state['enable_price_m2_filter'] = enable_price_m2_filter
+            st.session_state['per_category_settings'] = per_category_settings
+            st.session_state['use_per_category_filters'] = use_per_category_filters
         
         # Success message with summary
         total_transactions = sum(tc['total'] for tc in transaction_counts.values())
@@ -980,7 +1062,7 @@ def show_final_indexes_master_view():
         # Tab 2: By Category
         with tabs[1]:
             st.subheader("Final Indexes by Category")
-            st.caption("View all indexes grouped by index category")
+            st.caption("View all indexes grouped by index category with per-category filter controls")
             
             # Group indexes by category
             categories = {}
@@ -993,6 +1075,23 @@ def show_final_indexes_master_view():
             # Display each category
             for category, indexes in categories.items():
                 with st.expander(f"📂 {category}", expanded=True):
+                    # Show if custom filters were applied to this category
+                    if st.session_state.get('use_per_category_filters', False):
+                        cat_settings = st.session_state.get('per_category_settings', {}).get(category, {})
+                        custom_filters_applied = []
+                        
+                        if cat_settings.get('price_m2_min') is not None:
+                            custom_filters_applied.append(f"Price/m²: {cat_settings['price_m2_min']}-{cat_settings['price_m2_max']} EUR")
+                        if cat_settings.get('price_min') is not None:
+                            custom_filters_applied.append(f"Price: {cat_settings['price_min']:,}-{cat_settings['price_max']:,} EUR")
+                        if cat_settings.get('area_min') is not None:
+                            custom_filters_applied.append(f"Area: {cat_settings['area_min']}-{cat_settings['area_max']} m²")
+                        if cat_settings.get('date_from') is not None:
+                            custom_filters_applied.append(f"Date: {cat_settings['date_from']} to {cat_settings['date_to']}")
+                        
+                        if custom_filters_applied:
+                            st.info(f"🎯 **Custom filters for {category}:** " + ", ".join(custom_filters_applied))
+                    
                     # Create table for this category
                     cat_data = []
                     for index_name, index_info in indexes:
