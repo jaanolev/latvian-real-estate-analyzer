@@ -489,7 +489,7 @@ def show_final_indexes_master_view():
                 )
                 
                 st.dataframe(
-                    pivot_latest.style.format("{:.4f}").background_gradient(cmap='RdYlGn', axis=None, vmin=0.8, vmax=1.5),
+                    pivot_latest.round(4),
                     use_container_width=True,
                     height=400
                 )
@@ -590,7 +590,7 @@ def show_final_indexes_master_view():
                 
                 # Display full table
                 st.dataframe(
-                    index_df.style.format("{:.4f}").background_gradient(cmap='RdYlGn', axis=1, vmin=0.8, vmax=1.5),
+                    index_df.round(4),
                     use_container_width=True,
                     height=400
                 )
@@ -630,7 +630,7 @@ def show_final_indexes_master_view():
             for prop_type, index_df in all_indexes.items():
                 with st.expander(f"📂 {prop_type}", expanded=False):
                     st.dataframe(
-                        index_df.style.format("{:.4f}").background_gradient(cmap='RdYlGn', axis=1, vmin=0.8, vmax=1.5),
+                        index_df.round(4),
                         use_container_width=True
                     )
                     
