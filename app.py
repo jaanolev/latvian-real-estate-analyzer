@@ -414,7 +414,7 @@ def show_final_indexes_master_view():
     st.markdown("### ⚙️ Analysis Settings")
     
     # Create tabs for settings organization
-    settings_tabs = st.tabs(["🎯 Basic Settings", "🔍 Outlier Detection", "💰 Price Method", "🗑️ Duplicate Removal", "📅 Filters", "📊 Display Options"])
+    settings_tabs = st.tabs(["🎯 Basic Settings", "💰 Price Method", "🗑️ Duplicate Removal", "📅 Filters", "📊 Display Options"])
     
     with settings_tabs[0]:
         col1, col2 = st.columns(2)
@@ -434,34 +434,14 @@ def show_final_indexes_master_view():
             else:
                 ma_quarters = 1
     
-    with settings_tabs[1]:
-        st.markdown("##### Outlier Detection Configuration")
-        st.caption("Remove extreme values that might skew the index calculations")
-        
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            outlier_method = st.selectbox(
-                "Detection Method",
-                ["None", "IQR Method (1.5x - standard)", "IQR Method (3x - conservative)", "Percentile Method"],
-                help="Choose how to detect and remove outliers"
-            )
-        
-        with col2:
-            if outlier_method == "Percentile Method":
-                lower_percentile = st.slider("Lower Percentile", 0.0, 10.0, 1.0, 0.5)
-                upper_percentile = st.slider("Upper Percentile", 90.0, 100.0, 99.0, 0.5)
-            else:
-                lower_percentile = None
-                upper_percentile = None
-        
-        with col3:
-            apply_per_region = st.checkbox("Apply per region", value=False, 
-                                          help="Detect outliers within each region separately")
-            apply_per_quarter = st.checkbox("Apply per quarter", value=False,
-                                           help="Detect outliers within each quarter separately")
+    # Set outlier detection to None (use Boxplot tab for expert outlier control)
+    outlier_method = "None"
+    lower_percentile = None
+    upper_percentile = None
+    apply_per_region = False
+    apply_per_quarter = False
     
-    with settings_tabs[2]:
+    with settings_tabs[1]:
         st.markdown("##### Price Calculation Method")
         st.caption("Choose how to calculate price per square meter")
         
@@ -482,7 +462,7 @@ def show_final_indexes_master_view():
                 "**Calculated**: Price_EUR ÷ Sold_Area_m2"
             )
     
-    with settings_tabs[3]:
+    with settings_tabs[2]:
         st.markdown("##### Duplicate Removal")
         st.caption("Remove duplicate transactions to ensure data quality")
         
@@ -503,7 +483,7 @@ def show_final_indexes_master_view():
                     "**Address + Date + Price**: More strict duplicate detection"
                 )
     
-    with settings_tabs[4]:
+    with settings_tabs[3]:
         st.markdown("##### Data Filters")
         st.caption("Filter transactions by date, price, and area")
         
@@ -547,7 +527,7 @@ def show_final_indexes_master_view():
                 price_m2_min = None
                 price_m2_max = None
     
-    with settings_tabs[5]:
+    with settings_tabs[4]:
         st.markdown("##### Display Options")
         
         col1, col2 = st.columns(2)
@@ -568,9 +548,10 @@ def show_final_indexes_master_view():
     if st.button("🚀 Generate Final Indexes", type="primary", use_container_width=True):
         with st.spinner("Loading data and calculating final indexes..."):
             final_indexes = {}
-            loaded_data_cache = {}  # Cache loaded dataframes
+            initial_indexes = {}  # Store unfiltered indexes for comparison
             transaction_counts = {}  # Store transaction counts per index
             data_quality_metrics = {}  # Store quality metrics per index
+            loaded_data_cache = {}  # Cache loaded dataframes
             
             # Calculate each final index
             for category in selected_categories:
@@ -687,6 +668,28 @@ def show_final_indexes_master_view():
                         # Store original count
                         original_count = len(df_filtered)
                         
+                        # Calculate INITIAL index (before any filters) for comparison
+                        try:
+                            use_total_eur_m2_calc = not use_calculated
+                            agg_df_initial = aggregate_by_region_quarter(df_filtered.copy(), use_total_eur_m2_calc, prop_type)
+                            prices_table_initial = create_prices_table(agg_df_initial, ma_quarters=ma_quarters)
+                            base_year_calc = int(base_period.split('-')[0])
+                            base_quarter_calc = int(base_period.split('-Q')[1])
+                            index_table_initial = create_index_table(prices_table_initial, prop_type, base_year_calc, base_quarter_calc)
+                            
+                            if len(index_table_initial) > 0:
+                                initial_indexes[index_name] = {
+                                    'index': index_table_initial.loc[index_name] if index_name in index_table_initial.index else index_table_initial.iloc[0],
+                                    'prices': prices_table_initial.loc[index_name] if index_name in prices_table_initial.index else prices_table_initial.iloc[0],
+                                    'counts': agg_df_initial.groupby('YearQuarter')['Price_EUR'].count(),
+                                    'category': category,
+                                    'base': base_period,
+                                    'regions': regions_to_combine
+                                }
+                        except Exception as e:
+                            st.warning(f"Could not calculate initial index for {index_name}: {str(e)}")
+                            initial_indexes[index_name] = None
+                        
                         # Apply date filter if enabled
                         if enable_date_filter and date_from and date_to:
                             df_filtered = df_filtered[
@@ -782,6 +785,8 @@ def show_final_indexes_master_view():
                         if len(index_table) > 0:
                             final_indexes[index_name] = {
                                 'index': index_table.loc[index_name] if index_name in index_table.index else index_table.iloc[0],
+                                'prices': prices_table.loc[index_name] if index_name in prices_table.index else prices_table.iloc[0],
+                                'counts': agg_df.groupby('YearQuarter')['Price_EUR'].count(),
                                 'category': category,
                                 'base': base_period,
                                 'regions': regions_to_combine
@@ -801,6 +806,7 @@ def show_final_indexes_master_view():
             
             # Store in session state
             st.session_state['final_indexes'] = final_indexes
+            st.session_state['initial_indexes'] = initial_indexes
             st.session_state['master_categories'] = selected_categories
             st.session_state['master_ma_quarters'] = ma_quarters
             st.session_state['transaction_counts'] = transaction_counts
@@ -810,6 +816,10 @@ def show_final_indexes_master_view():
             st.session_state['outlier_method'] = outlier_method
             st.session_state['price_calculation_method'] = use_total_eur_m2_master
             st.session_state['duplicate_method'] = duplicate_method
+            st.session_state['enable_date_filter'] = enable_date_filter
+            st.session_state['enable_price_filter'] = enable_price_filter
+            st.session_state['enable_area_filter'] = enable_area_filter
+            st.session_state['enable_price_m2_filter'] = enable_price_m2_filter
         
         # Success message with summary
         total_transactions = sum(tc['total'] for tc in transaction_counts.values())
@@ -831,6 +841,7 @@ def show_final_indexes_master_view():
         st.header("📈 Final Index Results")
         
         final_indexes = st.session_state['final_indexes']
+        initial_indexes = st.session_state.get('initial_indexes', {})
         ma_quarters = st.session_state.get('master_ma_quarters', 1)
         transaction_counts = st.session_state.get('transaction_counts', {})
         show_transaction_counts = st.session_state.get('show_transaction_counts', True)
@@ -1006,34 +1017,141 @@ def show_final_indexes_master_view():
                     cat_df = pd.DataFrame(cat_data)
                     st.dataframe(cat_df, use_container_width=True, hide_index=True)
                     
-                    # Plot for this category
+                    # Plot for this category - show both initial and filtered
+                    st.markdown("#### Index Evolution")
                     fig_cat = go.Figure()
+                    
                     for index_name, index_info in indexes:
+                        # Add initial (unfiltered) line as dashed
+                        if index_name in initial_indexes and initial_indexes[index_name]:
+                            initial_series = initial_indexes[index_name]['index']
+                            fig_cat.add_trace(go.Scatter(
+                                x=initial_series.index,
+                                y=initial_series.values,
+                                mode='lines',
+                                name=f"{index_name} (Initial)",
+                                line=dict(width=1.5, dash='dash'),
+                                opacity=0.6,
+                                showlegend=True
+                            ))
+                        
+                        # Add filtered line as solid
                         index_series = index_info['index']
                         fig_cat.add_trace(go.Scatter(
                             x=index_series.index,
                             y=index_series.values,
                             mode='lines+markers',
-                            name=index_name,
+                            name=f"{index_name} (Filtered)",
                             line=dict(width=2),
-                            marker=dict(size=6)
+                            marker=dict(size=6),
+                            showlegend=True
                         ))
                     
                     fig_cat.update_layout(
-                        title=f"{category} - Index Evolution",
+                        title=f"{category} - Index Evolution (Dashed=Initial, Solid=Filtered)",
                         xaxis_title="Quarter",
                         yaxis_title="Index (Base = 1.0)",
                         hovermode='x unified',
-                        height=400,
-                        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+                        height=500,
+                        legend=dict(orientation="v", yanchor="top", y=0.99, xanchor="left", x=1.01)
                     )
                     fig_cat.update_xaxes(tickangle=45)
                     st.plotly_chart(fig_cat, use_container_width=True)
+                    
+                    # Add counts plot
+                    st.markdown("#### Transaction Counts by Quarter")
+                    fig_counts = go.Figure()
+                    
+                    for index_name, index_info in indexes:
+                        if 'counts' in index_info:
+                            counts_series = index_info['counts']
+                            fig_counts.add_trace(go.Bar(
+                                x=counts_series.index,
+                                y=counts_series.values,
+                                name=index_name,
+                                opacity=0.7
+                            ))
+                    
+                    fig_counts.update_layout(
+                        title=f"{category} - Transaction Counts (Post-Filter)",
+                        xaxis_title="Quarter",
+                        yaxis_title="Number of Transactions",
+                        hovermode='x unified',
+                        height=400,
+                        barmode='group',
+                        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+                    )
+                    fig_counts.update_xaxes(tickangle=45)
+                    st.plotly_chart(fig_counts, use_container_width=True)
         
         # Tab 3: Time Series
         with tabs[2]:
             st.subheader("Time Series Comparison")
-            st.caption("Compare multiple final indexes over time")
+            st.caption("Compare multiple final indexes over time (showing post-filter results)")
+            
+            # Show filtering summary
+            st.markdown("### 📋 Data Processing Summary")
+            
+            col1, col2, col3, col4 = st.columns(4)
+            
+            total_initial = sum(tc['original'] for tc in transaction_counts.values())
+            total_final = sum(tc['total'] for tc in transaction_counts.values())
+            total_removed = sum(tc['total_removed'] for tc in transaction_counts.values())
+            removal_rate = (total_removed / total_initial * 100) if total_initial > 0 else 0
+            
+            with col1:
+                st.metric("Initial Transactions", f"{total_initial:,}")
+            
+            with col2:
+                st.metric("Final Transactions", f"{total_final:,}", 
+                         delta=f"-{total_removed:,}", delta_color="off")
+            
+            with col3:
+                st.metric("Removal Rate", f"{removal_rate:.1f}%")
+            
+            with col4:
+                st.metric("Indexes Calculated", len(final_indexes))
+            
+            # Detailed filter breakdown
+            with st.expander("🔍 View Detailed Filtering Information"):
+                st.markdown("#### Filters Applied")
+                
+                filter_info = []
+                if st.session_state.get('enable_date_filter', False):
+                    filter_info.append("✅ Date Range Filter")
+                if st.session_state.get('enable_price_filter', False):
+                    filter_info.append("✅ Price Range Filter")
+                if st.session_state.get('enable_area_filter', False):
+                    filter_info.append("✅ Area Range Filter")
+                if st.session_state.get('enable_price_m2_filter', False):
+                    filter_info.append("✅ Price/m² Range Filter")
+                if duplicate_method != "None":
+                    filter_info.append(f"✅ Duplicate Removal: {duplicate_method}")
+                
+                if filter_info:
+                    for info in filter_info:
+                        st.write(info)
+                else:
+                    st.info("No filters applied - showing all data")
+                
+                st.markdown("#### Removal Breakdown by Index")
+                
+                removal_data = []
+                for index_name, tc in transaction_counts.items():
+                    removal_data.append({
+                        'Index': index_name,
+                        'Initial': f"{tc['original']:,}",
+                        'Final': f"{tc['total']:,}",
+                        'Filters': f"-{tc['filters_removed']:,}",
+                        'Duplicates': f"-{tc['duplicates_removed']:,}",
+                        'Total Removed': f"-{tc['total_removed']:,}",
+                        'Removal %': f"{tc['removal_percentage']:.1f}%"
+                    })
+                
+                removal_df = pd.DataFrame(removal_data)
+                st.dataframe(removal_df, use_container_width=True, hide_index=True)
+            
+            st.markdown("---")
             
             # Select indexes to compare
             index_names = list(final_indexes.keys())
@@ -1134,6 +1252,99 @@ def show_final_indexes_master_view():
                     zerolinewidth=1
                 )
                 st.plotly_chart(fig_ts, use_container_width=True)
+                
+                # Add counts visualization
+                st.markdown("### 📈 Transaction Counts Over Time")
+                fig_counts_ts = go.Figure()
+                
+                for index_name in selected_indexes:
+                    index_info = final_indexes[index_name]
+                    if 'counts' in index_info:
+                        counts_series = index_info['counts']
+                        x_dates_counts = [quarter_to_date(q) for q in counts_series.index]
+                        
+                        fig_counts_ts.add_trace(go.Scatter(
+                            x=x_dates_counts,
+                            y=counts_series.values,
+                            mode='lines+markers',
+                            name=index_name,
+                            line=dict(width=2),
+                            marker=dict(size=5),
+                            fill='tonexty' if selected_indexes.index(index_name) > 0 else None
+                        ))
+                
+                fig_counts_ts.update_layout(
+                    title="Transaction Counts Comparison (Post-Filter)",
+                    xaxis_title="Quarter",
+                    yaxis_title="Number of Transactions",
+                    hovermode='x unified',
+                    height=400,
+                    legend=dict(
+                        orientation="v",
+                        yanchor="top",
+                        y=0.99,
+                        xanchor="left",
+                        x=1.01,
+                        bgcolor="rgba(255, 255, 255, 0.9)",
+                        bordercolor="rgba(0, 0, 0, 0.3)",
+                        borderwidth=1,
+                        font=dict(size=10)
+                    ),
+                    margin=dict(r=250, b=120, t=80, l=80)
+                )
+                fig_counts_ts.update_xaxes(
+                    tickangle=45,
+                    tickmode='array',
+                    tickvals=tickvals_dt,
+                    ticktext=ticktext
+                )
+                st.plotly_chart(fig_counts_ts, use_container_width=True)
+                
+                # Add average price per m² visualization
+                st.markdown("### 💰 Average Price per m² Over Time")
+                fig_prices_ts = go.Figure()
+                
+                for index_name in selected_indexes:
+                    index_info = final_indexes[index_name]
+                    if 'prices' in index_info:
+                        prices_series = index_info['prices']
+                        x_dates_prices = [quarter_to_date(q) for q in prices_series.index]
+                        
+                        fig_prices_ts.add_trace(go.Scatter(
+                            x=x_dates_prices,
+                            y=prices_series.values,
+                            mode='lines+markers',
+                            name=index_name,
+                            line=dict(width=2),
+                            marker=dict(size=5)
+                        ))
+                
+                fig_prices_ts.update_layout(
+                    title="Average Price per m² Comparison (Post-Filter)",
+                    xaxis_title="Quarter",
+                    yaxis_title="Price per m² (EUR)",
+                    hovermode='x unified',
+                    height=400,
+                    legend=dict(
+                        orientation="v",
+                        yanchor="top",
+                        y=0.99,
+                        xanchor="left",
+                        x=1.01,
+                        bgcolor="rgba(255, 255, 255, 0.9)",
+                        bordercolor="rgba(0, 0, 0, 0.3)",
+                        borderwidth=1,
+                        font=dict(size=10)
+                    ),
+                    margin=dict(r=250, b=120, t=80, l=80)
+                )
+                fig_prices_ts.update_xaxes(
+                    tickangle=45,
+                    tickmode='array',
+                    tickvals=tickvals_dt,
+                    ticktext=ticktext
+                )
+                st.plotly_chart(fig_prices_ts, use_container_width=True)
                 
                 # Data table
                 st.markdown("### 📊 Index Values Table")
