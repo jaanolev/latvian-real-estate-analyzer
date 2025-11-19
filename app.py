@@ -396,23 +396,88 @@ def show_final_indexes_master_view():
     }
     
     # Settings
-    st.markdown("### ⚙️ Settings")
-    col1, col2 = st.columns(2)
+    st.markdown("### ⚙️ Analysis Settings")
     
-    with col1:
-        use_ma = st.checkbox("Use Moving Average", value=False, help="Apply moving average smoothing to indexes")
-        if use_ma:
-            ma_quarters = st.slider("Moving Average Window (Quarters)", 2, 4, 2)
-        else:
-            ma_quarters = 1
+    # Create tabs for settings organization
+    settings_tabs = st.tabs(["🎯 Basic Settings", "🔍 Outlier Detection", "💰 Price Method", "📊 Display Options"])
     
-    with col2:
-        selected_categories = st.multiselect(
-            "Index Categories to Display",
-            list(final_indexes_config.keys()),
-            default=list(final_indexes_config.keys()),
-            help="Select which index categories to include"
-        )
+    with settings_tabs[0]:
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            selected_categories = st.multiselect(
+                "Index Categories to Display",
+                list(final_indexes_config.keys()),
+                default=list(final_indexes_config.keys()),
+                help="Select which index categories to include"
+            )
+        
+        with col2:
+            use_ma = st.checkbox("Use Moving Average", value=False, help="Apply moving average smoothing to indexes")
+            if use_ma:
+                ma_quarters = st.slider("Moving Average Window (Quarters)", 2, 4, 2)
+            else:
+                ma_quarters = 1
+    
+    with settings_tabs[1]:
+        st.markdown("##### Outlier Detection Configuration")
+        st.caption("Remove extreme values that might skew the index calculations")
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            outlier_method = st.selectbox(
+                "Detection Method",
+                ["None", "IQR Method (1.5x - standard)", "IQR Method (3x - conservative)", "Percentile Method"],
+                help="Choose how to detect and remove outliers"
+            )
+        
+        with col2:
+            if outlier_method == "Percentile Method":
+                lower_percentile = st.slider("Lower Percentile", 0.0, 10.0, 1.0, 0.5)
+                upper_percentile = st.slider("Upper Percentile", 90.0, 100.0, 99.0, 0.5)
+            else:
+                lower_percentile = None
+                upper_percentile = None
+        
+        with col3:
+            apply_per_region = st.checkbox("Apply per region", value=False, 
+                                          help="Detect outliers within each region separately")
+            apply_per_quarter = st.checkbox("Apply per quarter", value=False,
+                                           help="Detect outliers within each quarter separately")
+    
+    with settings_tabs[2]:
+        st.markdown("##### Price Calculation Method")
+        st.caption("Choose how to calculate price per square meter")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            use_total_eur_m2_master = st.radio(
+                "Calculation Method",
+                ["Calculated (Price ÷ Area)", "Use Existing Column"],
+                help="'Calculated' divides Price by Sold Area. 'Use Existing' uses Total_EUR_m2 or Land_EUR_m2 column."
+            )
+            use_calculated = (use_total_eur_m2_master == "Calculated (Price ÷ Area)")
+        
+        with col2:
+            st.info(
+                "**Calculated**: Price_EUR ÷ Sold_Area_m2\n\n"
+                "**Existing Column**: Uses Total_EUR_m2 (Flats/Houses/Premises) or Land_EUR_m2 (Land types)"
+            )
+    
+    with settings_tabs[3]:
+        st.markdown("##### Display Options")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            show_transaction_counts = st.checkbox("Show transaction counts", value=True,
+                                                 help="Display number of transactions used in calculations")
+        
+        with col2:
+            show_data_quality = st.checkbox("Show data quality metrics", value=False,
+                                           help="Display outlier removal statistics and data coverage")
     
     if not selected_categories:
         st.warning("⚠️ Please select at least one index category")
@@ -423,6 +488,8 @@ def show_final_indexes_master_view():
         with st.spinner("Loading data and calculating final indexes..."):
             final_indexes = {}
             loaded_data_cache = {}  # Cache loaded dataframes
+            transaction_counts = {}  # Store transaction counts per index
+            data_quality_metrics = {}  # Store quality metrics per index
             
             # Calculate each final index
             for category in selected_categories:
@@ -536,8 +603,36 @@ def show_final_indexes_master_view():
                             # Relabel all regions as the index name for aggregation
                             df_filtered['region_riga_separate'] = index_name
                         
-                        # Determine calculation method (use Total_EUR_m2/Land_EUR_m2 for better coverage)
-                        use_total_eur_m2 = True
+                        # Store original count
+                        original_count = len(df_filtered)
+                        
+                        # Apply outlier detection if enabled
+                        if outlier_method != "None":
+                            df_before_outliers = df_filtered.copy()
+                            df_filtered = detect_outliers(
+                                df_filtered,
+                                use_total_eur_m2=not use_calculated,
+                                method=outlier_method,
+                                lower_percentile=lower_percentile,
+                                upper_percentile=upper_percentile,
+                                per_region=apply_per_region,
+                                per_quarter=apply_per_quarter,
+                                property_type=prop_type
+                            )
+                            outliers_removed = original_count - len(df_filtered)
+                        else:
+                            outliers_removed = 0
+                        
+                        # Store transaction counts and quality metrics
+                        transaction_counts[index_name] = {
+                            'total': len(df_filtered),
+                            'original': original_count,
+                            'outliers_removed': outliers_removed,
+                            'outlier_percentage': (outliers_removed / original_count * 100) if original_count > 0 else 0
+                        }
+                        
+                        # Determine calculation method based on user selection
+                        use_total_eur_m2 = not use_calculated
                         
                         # Aggregate and calculate index
                         agg_df = aggregate_by_region_quarter(df_filtered, use_total_eur_m2, prop_type)
@@ -570,8 +665,17 @@ def show_final_indexes_master_view():
             st.session_state['final_indexes'] = final_indexes
             st.session_state['master_categories'] = selected_categories
             st.session_state['master_ma_quarters'] = ma_quarters
+            st.session_state['transaction_counts'] = transaction_counts
+            st.session_state['data_quality_metrics'] = data_quality_metrics
+            st.session_state['show_transaction_counts'] = show_transaction_counts
+            st.session_state['show_data_quality'] = show_data_quality
+            st.session_state['outlier_method'] = outlier_method
+            st.session_state['price_calculation_method'] = use_total_eur_m2_master
         
-        st.success(f"✅ Calculated {len(final_indexes)} final indexes!")
+        # Success message with summary
+        total_transactions = sum(tc['total'] for tc in transaction_counts.values())
+        total_outliers = sum(tc['outliers_removed'] for tc in transaction_counts.values())
+        st.success(f"✅ Calculated {len(final_indexes)} final indexes using {total_transactions:,} transactions ({total_outliers:,} outliers removed)")
     
     # Display results if available
     if 'final_indexes' in st.session_state:
@@ -580,6 +684,11 @@ def show_final_indexes_master_view():
         
         final_indexes = st.session_state['final_indexes']
         ma_quarters = st.session_state.get('master_ma_quarters', 1)
+        transaction_counts = st.session_state.get('transaction_counts', {})
+        show_transaction_counts = st.session_state.get('show_transaction_counts', True)
+        show_data_quality = st.session_state.get('show_data_quality', False)
+        outlier_method = st.session_state.get('outlier_method', 'None')
+        price_method = st.session_state.get('price_calculation_method', 'Use Existing Column')
         
         # Create tabs
         tabs = st.tabs([
@@ -592,7 +701,17 @@ def show_final_indexes_master_view():
         # Tab 1: All Final Indexes
         with tabs[0]:
             st.subheader("All Final Indexes - Complete Overview")
-            st.caption("All calculated final indexes with latest values")
+            
+            # Show analysis settings summary
+            col_info1, col_info2, col_info3 = st.columns(3)
+            with col_info1:
+                st.caption(f"**Outlier Method:** {outlier_method}")
+            with col_info2:
+                st.caption(f"**Price Method:** {price_method}")
+            with col_info3:
+                st.caption(f"**Moving Average:** {ma_quarters}Q" if ma_quarters > 1 else "**Moving Average:** None")
+            
+            st.markdown("---")
             
             # Create comprehensive table
             index_data = []
@@ -601,15 +720,25 @@ def show_final_indexes_master_view():
                 latest_value = index_series.iloc[-1]
                 latest_quarter = index_series.index[-1]
                 
-                index_data.append({
+                row_data = {
                     'Index Name': index_name,
                     'Category': index_info['category'],
                     'Latest Quarter': latest_quarter,
-                    'Latest Index': latest_value,
+                    'Latest Index': f"{latest_value:.4f}",
                     'Change vs Base': f"{(latest_value - 1.0) * 100:.1f}%",
                     'Base Period': index_info['base'],
-                    'Regions': ', '.join(index_info['regions'])
-                })
+                }
+                
+                # Add transaction counts if enabled
+                if show_transaction_counts and index_name in transaction_counts:
+                    row_data['Transactions'] = f"{transaction_counts[index_name]['total']:,}"
+                
+                # Add data quality metrics if enabled
+                if show_data_quality and index_name in transaction_counts:
+                    row_data['Outliers Removed'] = f"{transaction_counts[index_name]['outliers_removed']:,} ({transaction_counts[index_name]['outlier_percentage']:.1f}%)"
+                
+                row_data['Regions'] = ', '.join(index_info['regions'])
+                index_data.append(row_data)
             
             display_df = pd.DataFrame(index_data)
             st.dataframe(display_df, use_container_width=True, hide_index=True)
@@ -618,23 +747,48 @@ def show_final_indexes_master_view():
             st.markdown("#### 📊 Summary Statistics")
             col1, col2, col3, col4 = st.columns(4)
             
+            # Convert 'Latest Index' to float for calculations (it's now a string)
+            latest_index_values = [float(val) for val in display_df['Latest Index']]
+            
             with col1:
-                max_idx = display_df['Latest Index'].max()
+                max_idx = max(latest_index_values)
                 st.metric("Highest Index", f"{max_idx:.3f}", 
                          f"+{(max_idx - 1.0) * 100:.1f}%")
             
             with col2:
-                min_idx = display_df['Latest Index'].min()
+                min_idx = min(latest_index_values)
                 st.metric("Lowest Index", f"{min_idx:.3f}",
                          f"{(min_idx - 1.0) * 100:.1f}%")
             
             with col3:
-                avg_idx = display_df['Latest Index'].mean()
+                avg_idx = sum(latest_index_values) / len(latest_index_values)
                 st.metric("Average Index", f"{avg_idx:.3f}",
                          f"{(avg_idx - 1.0) * 100:.1f}%")
             
             with col4:
                 st.metric("Total Indexes", len(final_indexes))
+            
+            # Show transaction statistics if enabled
+            if show_transaction_counts and transaction_counts:
+                st.markdown("#### 📈 Transaction Statistics")
+                col1, col2, col3, col4 = st.columns(4)
+                
+                total_trans = sum(tc['total'] for tc in transaction_counts.values())
+                total_original = sum(tc['original'] for tc in transaction_counts.values())
+                total_outliers = sum(tc['outliers_removed'] for tc in transaction_counts.values())
+                avg_outlier_pct = (total_outliers / total_original * 100) if total_original > 0 else 0
+                
+                with col1:
+                    st.metric("Total Transactions", f"{total_trans:,}")
+                
+                with col2:
+                    st.metric("Original Count", f"{total_original:,}")
+                
+                with col3:
+                    st.metric("Outliers Removed", f"{total_outliers:,}")
+                
+                with col4:
+                    st.metric("Outlier Rate", f"{avg_outlier_pct:.1f}%")
         
         # Tab 2: By Category
         with tabs[1]:
@@ -659,13 +813,19 @@ def show_final_indexes_master_view():
                         latest_value = index_series.iloc[-1]
                         latest_quarter = index_series.index[-1]
                         
-                        cat_data.append({
+                        row_data = {
                             'Index Name': index_name,
                             'Latest Quarter': latest_quarter,
                             'Latest Index': f"{latest_value:.4f}",
                             'Change vs Base': f"{(latest_value - 1.0) * 100:.1f}%",
-                            'Regions': ', '.join(index_info['regions'])
-                        })
+                        }
+                        
+                        # Add transaction counts if enabled
+                        if show_transaction_counts and index_name in transaction_counts:
+                            row_data['Transactions'] = f"{transaction_counts[index_name]['total']:,}"
+                        
+                        row_data['Regions'] = ', '.join(index_info['regions'])
+                        cat_data.append(row_data)
                     
                     cat_df = pd.DataFrame(cat_data)
                     st.dataframe(cat_df, use_container_width=True, hide_index=True)
