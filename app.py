@@ -390,9 +390,19 @@ def show_final_indexes_master_view():
         "LV AGRILAND": {
             "property_type": "Agricultural land",
             "indexes": [
-                {"name": "LV AGRILAND", "regions": ["Rīga", "Pierīga", "Kurzeme", "Vidzeme", "Latgale", "Zemgale"]},
-                {"name": "LV FOREST LAND", "regions": ["Rīga", "Pierīga", "Kurzeme", "Vidzeme", "Latgale", "Zemgale"], "property_type_override": "Forest land"},
-                {"name": "LV OTHER LAND", "regions": ["Rīga", "Pierīga", "Kurzeme", "Vidzeme", "Latgale", "Zemgale"], "property_type_override": "Other land"}
+                {"name": "LV AGRILAND", "regions": ["Rīga", "Pierīga", "Kurzeme", "Vidzeme", "Latgale", "Zemgale"]}
+            ]
+        },
+        "LV FOREST LAND": {
+            "property_type": "Forest land",
+            "indexes": [
+                {"name": "LV FOREST LAND", "regions": ["Rīga", "Pierīga", "Kurzeme", "Vidzeme", "Latgale", "Zemgale"]}
+            ]
+        },
+        "LV OTHER LAND": {
+            "property_type": "Other land",
+            "indexes": [
+                {"name": "LV OTHER LAND", "regions": ["Rīga", "Pierīga", "Kurzeme", "Vidzeme", "Latgale", "Zemgale"]}
             ]
         }
     }
