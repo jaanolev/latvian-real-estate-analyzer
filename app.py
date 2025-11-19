@@ -33,8 +33,8 @@ def load_data(property_type='Houses'):
         filename = 'LV_forestland_merged_mapped_unfiltered.csv'
         df = pd.read_csv(filename, index_col=0)
     elif property_type == 'Other land':
-        filename = 'LV_otherland_merged_mapped_unfiltered.csv'
-        df = pd.read_csv(filename, index_col=0)
+        filename = 'OTHER_LAND_NEW_data_merged_processed_20251119_122634.csv'
+        df = pd.read_csv(filename)  # No index_col
     elif property_type == 'Land commercial':
         filename = 'Land_commercial_merged_processed_20251117.csv'
         df = pd.read_csv(filename)  # No index_col
@@ -54,22 +54,13 @@ def load_data(property_type='Houses'):
         if col in df.columns:
             df[col] = clean_numeric_column(df[col])
     
-    # Convert Date column - try multiple formats
-    # Store original date strings before conversion
-    date_original = df['Date'].copy()
-    
-    # Try YYYY-MM-DD first
+    # Convert Date column - automatically detect format
+    # Try YYYY-MM-DD first, then fall back to auto-detection
     df['Date'] = pd.to_datetime(df['Date'], errors='coerce', format='%Y-%m-%d')
-    
-    # For any that failed, try DD/MM/YYYY format (common in European data)
+    # For any that failed, try auto-detection
     mask = df['Date'].isna()
     if mask.sum() > 0:
-        df.loc[mask, 'Date'] = pd.to_datetime(date_original[mask], errors='coerce', format='%d/%m/%Y', dayfirst=True)
-    
-    # For any still failing, try auto-detection with dayfirst=True (European dates)
-    mask = df['Date'].isna()
-    if mask.sum() > 0:
-        df.loc[mask, 'Date'] = pd.to_datetime(date_original[mask], errors='coerce', dayfirst=True)
+        df.loc[mask, 'Date'] = pd.to_datetime(df.loc[mask, 'Date'], errors='coerce')
     
     # Update Quarter and Year from the parsed Date
     df['Quarter'] = df['Date'].dt.quarter
@@ -396,12 +387,6 @@ def main():
     # Load data based on property type
     with st.spinner(f"Loading {property_type.lower()} data..."):
         df = load_data(property_type)
-    
-    # Check if dataframe is empty or has no valid data
-    if len(df) == 0 or df['Year'].isna().all():
-        st.error(f"❌ No valid {property_type.lower()} data available. The dataset may be empty or contain invalid dates.")
-        st.info("💡 **Possible reasons:**\n- The data file may be empty or corrupted\n- All dates in the data may be invalid\n- The data may need preprocessing")
-        st.stop()
     
     st.success(f"✅ Loaded {len(df):,} {property_type.lower()} records")
     
