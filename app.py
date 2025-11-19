@@ -78,9 +78,17 @@ def calculate_price_per_m2(df, use_total_eur_m2=False, property_type='Houses'):
     if use_total_eur_m2:
         # For Agricultural land, Forest land, Land commercial, Land residential, and Other land, use Land_EUR_m2, otherwise use Total_EUR_m2
         if property_type in ['Agricultural land', 'Forest land', 'Land commercial', 'Land residential', 'Other land']:
-            df['Price_per_m2'] = df['Land_EUR_m2']
+            if 'Land_EUR_m2' in df.columns:
+                df['Price_per_m2'] = df['Land_EUR_m2']
+            else:
+                # Fallback to calculated method if column doesn't exist
+                df['Price_per_m2'] = df['Price_EUR'] / df['Sold_Area_m2']
         else:
-            df['Price_per_m2'] = df['Total_EUR_m2']
+            if 'Total_EUR_m2' in df.columns:
+                df['Price_per_m2'] = df['Total_EUR_m2']
+            else:
+                # Fallback to calculated method if column doesn't exist
+                df['Price_per_m2'] = df['Price_EUR'] / df['Sold_Area_m2']
     else:
         # Calculate from Price_EUR / Sold_Area_m2
         df['Price_per_m2'] = df['Price_EUR'] / df['Sold_Area_m2']
@@ -98,9 +106,17 @@ def aggregate_by_region_quarter(df, use_total_eur_m2=False, property_type='House
     if use_total_eur_m2:
         # When using Total_EUR_m2 or Land_EUR_m2, only require the appropriate column to be valid
         if property_type in ['Agricultural land', 'Forest land', 'Land commercial', 'Land residential', 'Other land']:
-            df = df[df['Land_EUR_m2'].notna() & (df['Land_EUR_m2'] > 0)].copy()
+            if 'Land_EUR_m2' in df.columns:
+                df = df[df['Land_EUR_m2'].notna() & (df['Land_EUR_m2'] > 0)].copy()
+            else:
+                # Fallback to calculated method requirements
+                df = df[df['Price_EUR'].notna() & df['Sold_Area_m2'].notna() & (df['Sold_Area_m2'] > 0)].copy()
         else:
-            df = df[df['Total_EUR_m2'].notna() & (df['Total_EUR_m2'] > 0)].copy()
+            if 'Total_EUR_m2' in df.columns:
+                df = df[df['Total_EUR_m2'].notna() & (df['Total_EUR_m2'] > 0)].copy()
+            else:
+                # Fallback to calculated method requirements
+                df = df[df['Price_EUR'].notna() & df['Sold_Area_m2'].notna() & (df['Sold_Area_m2'] > 0)].copy()
     else:
         # When calculating, require both Price_EUR and Sold_Area_m2 to be valid
         df = df[df['Price_EUR'].notna() & df['Sold_Area_m2'].notna() & (df['Sold_Area_m2'] > 0)].copy()
@@ -204,14 +220,8 @@ def detect_outliers(df, use_total_eur_m2=False, method="IQR Method (1.5x - stand
     df_temp = calculate_price_per_m2(df.copy(), use_total_eur_m2, property_type)
     
     # Determine which price column to use
-    if use_total_eur_m2:
-        # For Agricultural land, Forest land, Land commercial, Land residential, and Other land, use Land_EUR_m2
-        if property_type in ['Agricultural land', 'Forest land', 'Land commercial', 'Land residential', 'Other land']:
-            price_col = 'Land_EUR_m2'
-        else:
-            price_col = 'Total_EUR_m2'
-    else:
-        price_col = 'Price_per_m2'
+    # Always use Price_per_m2 which calculate_price_per_m2 creates (with fallback logic)
+    price_col = 'Price_per_m2'
     
     # Initialize mask - True = keep, False = remove
     # Start by keeping everything
