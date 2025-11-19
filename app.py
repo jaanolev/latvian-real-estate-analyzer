@@ -455,15 +455,16 @@ def show_final_indexes_master_view():
         with col1:
             use_total_eur_m2_master = st.radio(
                 "Calculation Method",
-                ["Calculated (Price ÷ Area)", "Use Existing Column"],
-                help="'Calculated' divides Price by Sold Area. 'Use Existing' uses Total_EUR_m2 or Land_EUR_m2 column."
+                ["Use Existing Column", "Calculated (Price ÷ Area)"],
+                index=0,
+                help="'Use Existing' uses Total_EUR_m2 or Land_EUR_m2 column (recommended). 'Calculated' divides Price by Sold Area."
             )
             use_calculated = (use_total_eur_m2_master == "Calculated (Price ÷ Area)")
         
         with col2:
             st.info(
-                "**Calculated**: Price_EUR ÷ Sold_Area_m2\n\n"
-                "**Existing Column**: Uses Total_EUR_m2 (Flats/Houses/Premises) or Land_EUR_m2 (Land types)"
+                "**Use Existing Column** (Recommended): Uses Total_EUR_m2 (Flats/Houses/Premises) or Land_EUR_m2 (Land types)\n\n"
+                "**Calculated**: Price_EUR ÷ Sold_Area_m2"
             )
     
     with settings_tabs[3]:
@@ -609,17 +610,22 @@ def show_final_indexes_master_view():
                         # Apply outlier detection if enabled
                         if outlier_method != "None":
                             df_before_outliers = df_filtered.copy()
-                            df_filtered = detect_outliers(
-                                df_filtered,
-                                use_total_eur_m2=not use_calculated,
-                                method=outlier_method,
-                                lower_percentile=lower_percentile,
-                                upper_percentile=upper_percentile,
-                                per_region=apply_per_region,
-                                per_quarter=apply_per_quarter,
-                                property_type=prop_type
-                            )
-                            outliers_removed = original_count - len(df_filtered)
+                            try:
+                                df_filtered = detect_outliers(
+                                    df_filtered,
+                                    use_total_eur_m2=not use_calculated,
+                                    method=outlier_method,
+                                    lower_percentile=lower_percentile,
+                                    upper_percentile=upper_percentile,
+                                    per_region=apply_per_region,
+                                    per_quarter=apply_per_quarter,
+                                    property_type=prop_type
+                                )
+                                outliers_removed = original_count - len(df_filtered)
+                            except Exception as e:
+                                st.warning(f"⚠️ Outlier detection failed for {index_name}: {str(e)}. Proceeding without outlier removal.")
+                                df_filtered = df_before_outliers
+                                outliers_removed = 0
                         else:
                             outliers_removed = 0
                         
@@ -654,7 +660,11 @@ def show_final_indexes_master_view():
                             }
                         
                     except Exception as e:
-                        st.warning(f"⚠️ Could not calculate {index_name}: {str(e)}")
+                        import traceback
+                        error_details = traceback.format_exc()
+                        st.error(f"⚠️ Could not calculate {index_name}: {str(e)}")
+                        with st.expander("Show error details"):
+                            st.code(error_details)
                         continue
             
             if not final_indexes:
