@@ -388,21 +388,9 @@ def show_final_indexes_master_view():
             ]
         },
         "LV AGRILAND": {
-            "property_type": "Agricultural land",
+            "property_type": None,  # Special case - combines multiple property types
             "indexes": [
-                {"name": "LV AGRILAND", "regions": ["Rīga", "Pierīga", "Kurzeme", "Vidzeme", "Latgale", "Zemgale"]}
-            ]
-        },
-        "LV FOREST LAND": {
-            "property_type": "Forest land",
-            "indexes": [
-                {"name": "LV FOREST LAND", "regions": ["Rīga", "Pierīga", "Kurzeme", "Vidzeme", "Latgale", "Zemgale"]}
-            ]
-        },
-        "LV OTHER LAND": {
-            "property_type": "Other land",
-            "indexes": [
-                {"name": "LV OTHER LAND", "regions": ["Rīga", "Pierīga", "Kurzeme", "Vidzeme", "Latgale", "Zemgale"]}
+                {"name": "LV AGRILAND", "regions": ["Rīga", "Pierīga", "Kurzeme", "Vidzeme", "Latgale", "Zemgale"], "combine_property_types": ["Agricultural land", "Forest land", "Other land"]}
             ]
         }
     }
@@ -444,50 +432,109 @@ def show_final_indexes_master_view():
                     index_name = index_config["name"]
                     regions_to_combine = index_config["regions"]
                     
-                    # Determine which property type to use
-                    prop_type = index_config.get("property_type_override", category_config["property_type"])
+                    # Check if this combines multiple property types
+                    combine_types = index_config.get("combine_property_types", None)
                     
                     try:
-                        # Load data if not already cached
-                        if prop_type not in loaded_data_cache:
-                            config = property_types[prop_type]
+                        # Special handling for combined property types
+                        if combine_types:
+                            # Load and combine data from multiple property types
+                            combined_df = []
+                            base_period = None
                             
-                            # Load data
-                            if config["index_col"] is not None:
-                                df = pd.read_csv(config["file"], index_col=config["index_col"])
-                            else:
-                                df = pd.read_csv(config["file"])
+                            for prop_type in combine_types:
+                                if prop_type not in loaded_data_cache:
+                                    config = property_types[prop_type]
+                                    
+                                    # Load data
+                                    if config["index_col"] is not None:
+                                        df = pd.read_csv(config["file"], index_col=config["index_col"])
+                                    else:
+                                        df = pd.read_csv(config["file"])
+                                    
+                                    # Clean and prepare data
+                                    numeric_cols = ['Sold_Area_m2', 'Total_Area_m2', 'Price_EUR', 'Total_EUR_m2', 'Land_EUR_m2', 'Interior_Area_m2']
+                                    for col in numeric_cols:
+                                        if col in df.columns:
+                                            df[col] = clean_numeric_column(df[col])
+                                    
+                                    df['Date'] = pd.to_datetime(df['Date'], errors='coerce', format='%Y-%m-%d')
+                                    df['Quarter'] = df['Date'].dt.quarter
+                                    df['Year'] = df['Date'].dt.year
+                                    df = df.dropna(subset=['Date'])
+                                    df = df[(df['Year'] > 0) & (df['Quarter'] >= 1) & (df['Quarter'] <= 4)]
+                                    
+                                    loaded_data_cache[prop_type] = {
+                                        'data': df,
+                                        'base': config["base"]
+                                    }
+                                
+                                # Get cached data and filter to regions
+                                df_temp = loaded_data_cache[prop_type]['data'].copy()
+                                df_temp = df_temp[df_temp['region_riga_separate'].isin(regions_to_combine)]
+                                combined_df.append(df_temp)
+                                
+                                # Use the first property type's base period
+                                if base_period is None:
+                                    base_period = loaded_data_cache[prop_type]['base']
                             
-                            # Clean and prepare data
-                            numeric_cols = ['Sold_Area_m2', 'Total_Area_m2', 'Price_EUR', 'Total_EUR_m2', 'Land_EUR_m2', 'Interior_Area_m2']
-                            for col in numeric_cols:
-                                if col in df.columns:
-                                    df[col] = clean_numeric_column(df[col])
+                            # Concatenate all property types
+                            df_filtered = pd.concat(combined_df, ignore_index=True)
                             
-                            df['Date'] = pd.to_datetime(df['Date'], errors='coerce', format='%Y-%m-%d')
-                            df['Quarter'] = df['Date'].dt.quarter
-                            df['Year'] = df['Date'].dt.year
-                            df = df.dropna(subset=['Date'])
-                            df = df[(df['Year'] > 0) & (df['Quarter'] >= 1) & (df['Quarter'] <= 4)]
+                            if len(df_filtered) == 0:
+                                st.warning(f"⚠️ No data found for {index_name}")
+                                continue
                             
-                            loaded_data_cache[prop_type] = {
-                                'data': df,
-                                'base': config["base"]
-                            }
-                        
-                        # Get cached data
-                        df = loaded_data_cache[prop_type]['data'].copy()
-                        base_period = loaded_data_cache[prop_type]['base']
-                        
-                        # Filter to selected regions
-                        df_filtered = df[df['region_riga_separate'].isin(regions_to_combine)].copy()
-                        
-                        if len(df_filtered) == 0:
-                            st.warning(f"⚠️ No data found for {index_name}")
-                            continue
-                        
-                        # Relabel all regions as the index name for aggregation
-                        df_filtered['region_riga_separate'] = index_name
+                            # Relabel all as the index name
+                            df_filtered['region_riga_separate'] = index_name
+                            
+                            # Use Agricultural land for property type (for calculation method)
+                            prop_type = combine_types[0]
+                            
+                        else:
+                            # Single property type handling
+                            prop_type = index_config.get("property_type_override", category_config["property_type"])
+                            
+                            # Load data if not already cached
+                            if prop_type not in loaded_data_cache:
+                                config = property_types[prop_type]
+                                
+                                # Load data
+                                if config["index_col"] is not None:
+                                    df = pd.read_csv(config["file"], index_col=config["index_col"])
+                                else:
+                                    df = pd.read_csv(config["file"])
+                                
+                                # Clean and prepare data
+                                numeric_cols = ['Sold_Area_m2', 'Total_Area_m2', 'Price_EUR', 'Total_EUR_m2', 'Land_EUR_m2', 'Interior_Area_m2']
+                                for col in numeric_cols:
+                                    if col in df.columns:
+                                        df[col] = clean_numeric_column(df[col])
+                                
+                                df['Date'] = pd.to_datetime(df['Date'], errors='coerce', format='%Y-%m-%d')
+                                df['Quarter'] = df['Date'].dt.quarter
+                                df['Year'] = df['Date'].dt.year
+                                df = df.dropna(subset=['Date'])
+                                df = df[(df['Year'] > 0) & (df['Quarter'] >= 1) & (df['Quarter'] <= 4)]
+                                
+                                loaded_data_cache[prop_type] = {
+                                    'data': df,
+                                    'base': config["base"]
+                                }
+                            
+                            # Get cached data
+                            df = loaded_data_cache[prop_type]['data'].copy()
+                            base_period = loaded_data_cache[prop_type]['base']
+                            
+                            # Filter to selected regions
+                            df_filtered = df[df['region_riga_separate'].isin(regions_to_combine)].copy()
+                            
+                            if len(df_filtered) == 0:
+                                st.warning(f"⚠️ No data found for {index_name}")
+                                continue
+                            
+                            # Relabel all regions as the index name for aggregation
+                            df_filtered['region_riga_separate'] = index_name
                         
                         # Determine calculation method (use Total_EUR_m2/Land_EUR_m2 for better coverage)
                         use_total_eur_m2 = True
