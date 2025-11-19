@@ -804,15 +804,22 @@ def show_final_indexes_master_view():
                     finishing_filter_list = None
             
             with col2:
-                st.markdown("**Number of Parts/Units**")
-                st.caption("For properties with multiple units")
-                enable_parts_filter = st.checkbox("Filter by number of parts", value=False)
+                st.markdown("**Property Parts (Dom_Parts)**")
+                st.caption("For properties with multiple units (e.g., 1/1, 1/2)")
+                enable_parts_filter = st.checkbox("Filter by property parts", value=False)
                 if enable_parts_filter:
-                    parts_min = st.number_input("Min parts", min_value=1, value=1, step=1, key="parts_min_filter")
-                    parts_max = st.number_input("Max parts", min_value=1, value=10, step=1, key="parts_max_filter")
+                    # Predefined common Dom_Parts values
+                    common_parts = ['1/1', '1/2', '1/3', '1/4', '1/5', '1/6', '1/7', '1/8', 
+                                   '2/2', '2/3', '2/4', '3/3', '3/4', '4/4']
+                    parts_filter_list = st.multiselect(
+                        "Property parts (select multiple)",
+                        options=common_parts,
+                        help="Select property part values (e.g., 1/1 means single ownership, 1/2 means half ownership)"
+                    )
+                    if not parts_filter_list:
+                        parts_filter_list = None
                 else:
-                    parts_min = None
-                    parts_max = None
+                    parts_filter_list = None
                 
                 st.markdown("**Category Filter**")
                 st.caption("Specific property categories")
@@ -1097,13 +1104,9 @@ def show_final_indexes_master_view():
                                 df_filtered = df_filtered[df_filtered['Finishing'].isin(finishing_filter_list)].copy()
                         
                         # Apply parts filter if enabled
-                        if parts_min is not None and parts_max is not None:
+                        if parts_filter_list is not None and len(parts_filter_list) > 0:
                             if 'Dom_Parts' in df_filtered.columns:
-                                df_filtered = df_filtered[
-                                    (df_filtered['Dom_Parts'].notna()) &
-                                    (df_filtered['Dom_Parts'] >= parts_min) & 
-                                    (df_filtered['Dom_Parts'] <= parts_max)
-                                ].copy()
+                                df_filtered = df_filtered[df_filtered['Dom_Parts'].isin(parts_filter_list)].copy()
                         
                         # Apply category filter if enabled
                         if category_filter_list is not None and len(category_filter_list) > 0:
@@ -1582,7 +1585,7 @@ def show_final_indexes_master_view():
                 if st.session_state.get('enable_finishing_filter', False):
                     filter_info.append("✅ Finishing Quality Filter")
                 if st.session_state.get('enable_parts_filter', False):
-                    filter_info.append("✅ Number of Parts Filter")
+                    filter_info.append("✅ Property Parts (Dom_Parts) Filter")
                 if st.session_state.get('enable_category_filter', False):
                     filter_info.append("✅ Category Filter")
                 if st.session_state.get('enable_municipality_filter', False):
