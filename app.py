@@ -1461,9 +1461,22 @@ def show_final_indexes_master_view():
                     
                     # Plot for this category - show both initial and filtered
                     st.markdown("#### Index Evolution")
+                    
+                    st.info(
+                        "**📊 Understanding the comparison:**\n\n"
+                        "• **Dashed lines (Initial)** = Before applying filters (more transactions, all data)\n\n"
+                        "• **Solid lines (Filtered)** = After applying filters (fewer transactions, cleaned data)\n\n"
+                        "⚠️ **Note:** Filtered index can be HIGHER or LOWER than initial, depending on what's removed. "
+                        "Removing low-value outliers → index goes UP. Removing high-value outliers → index goes DOWN."
+                    )
+                    
                     fig_cat = go.Figure()
                     
                     for index_name, index_info in indexes:
+                        # Get transaction counts for display
+                        initial_count = initial_indexes[index_name]['counts'].sum() if index_name in initial_indexes and initial_indexes[index_name] and 'counts' in initial_indexes[index_name] else 0
+                        filtered_count = index_info.get('counts', pd.Series()).sum() if 'counts' in index_info else 0
+                        
                         # Add initial (unfiltered) line as dashed
                         if index_name in initial_indexes and initial_indexes[index_name]:
                             initial_series = initial_indexes[index_name]['index']
@@ -1471,7 +1484,7 @@ def show_final_indexes_master_view():
                                 x=initial_series.index,
                                 y=initial_series.values,
                                 mode='lines',
-                                name=f"{index_name} (Initial)",
+                                name=f"{index_name} (Initial - {int(initial_count):,} trans)",
                                 line=dict(width=1.5, dash='dash'),
                                 opacity=0.6,
                                 showlegend=True
@@ -1483,7 +1496,7 @@ def show_final_indexes_master_view():
                             x=index_series.index,
                             y=index_series.values,
                             mode='lines+markers',
-                            name=f"{index_name} (Filtered)",
+                            name=f"{index_name} (Filtered - {int(filtered_count):,} trans)",
                             line=dict(width=2),
                             marker=dict(size=6),
                             showlegend=True
