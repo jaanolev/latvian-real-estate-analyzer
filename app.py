@@ -686,47 +686,158 @@ def show_final_indexes_master_view():
     
     with settings_tabs[3]:
         st.markdown("##### Data Filters")
-        st.caption("Filter transactions by date, price, and area")
+        st.caption("Filter transactions by date, price, area, and property characteristics")
         
-        col1, col2 = st.columns(2)
+        # Organize in sub-tabs for better UX
+        filter_subtabs = st.tabs(["📅 Date & Price", "📏 Area & Size", "🏗️ Property Details"])
         
-        with col1:
-            st.markdown("**Date Range**")
-            enable_date_filter = st.checkbox("Enable date filtering", value=False)
-            if enable_date_filter:
-                date_from = st.date_input("From", value=pd.Timestamp("2014-01-01"))
-                date_to = st.date_input("To", value=pd.Timestamp.now())
-            else:
-                date_from = None
-                date_to = None
+        with filter_subtabs[0]:
+            col1, col2 = st.columns(2)
             
-            st.markdown("**Price Range (EUR)**")
-            enable_price_filter = st.checkbox("Enable price filtering", value=False)
-            if enable_price_filter:
-                price_min = st.number_input("Minimum Price", min_value=0, value=1000, step=1000)
-                price_max = st.number_input("Maximum Price", min_value=0, value=10000000, step=10000)
-            else:
-                price_min = None
-                price_max = None
-        
-        with col2:
-            st.markdown("**Area Range (m²)**")
-            enable_area_filter = st.checkbox("Enable area filtering", value=False)
-            if enable_area_filter:
-                area_min = st.number_input("Minimum Area", min_value=0.0, value=10.0, step=5.0)
-                area_max = st.number_input("Maximum Area", min_value=0.0, value=10000.0, step=50.0)
-            else:
-                area_min = None
-                area_max = None
+            with col1:
+                st.markdown("**Date Range**")
+                enable_date_filter = st.checkbox("Enable date filtering", value=False, key="enable_date_main")
+                if enable_date_filter:
+                    date_from = st.date_input("From", value=pd.Timestamp("2014-01-01"), key="date_from_main")
+                    date_to = st.date_input("To", value=pd.Timestamp.now(), key="date_to_main")
+                else:
+                    date_from = None
+                    date_to = None
             
-            st.markdown("**Price per m² Range (EUR/m²)**")
-            enable_price_m2_filter = st.checkbox("Enable price/m² filtering", value=False)
-            if enable_price_m2_filter:
-                price_m2_min = st.number_input("Minimum Price/m²", min_value=0, value=100, step=50)
-                price_m2_max = st.number_input("Maximum Price/m²", min_value=0, value=10000, step=100)
-            else:
-                price_m2_min = None
-                price_m2_max = None
+            with col2:
+                st.markdown("**Price Range (EUR)**")
+                enable_price_filter = st.checkbox("Enable price filtering", value=False, key="enable_price_main")
+                if enable_price_filter:
+                    price_min = st.number_input("Minimum Price", min_value=0, value=1000, step=1000, key="price_min_main")
+                    price_max = st.number_input("Maximum Price", min_value=0, value=10000000, step=10000, key="price_max_main")
+                else:
+                    price_min = None
+                    price_max = None
+        
+        with filter_subtabs[1]:
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.markdown("**Total Area Range (m²)**")
+                enable_area_filter = st.checkbox("Enable area filtering", value=False, key="enable_area_main")
+                if enable_area_filter:
+                    area_min = st.number_input("Minimum Area", min_value=0.0, value=10.0, step=5.0, key="area_min_main")
+                    area_max = st.number_input("Maximum Area", min_value=0.0, value=10000.0, step=50.0, key="area_max_main")
+                else:
+                    area_min = None
+                    area_max = None
+                
+                st.markdown("**Interior Area Range (m²)**")
+                st.caption("For apartments and houses with interior space")
+                enable_interior_filter = st.checkbox("Enable interior area filtering", value=False)
+                if enable_interior_filter:
+                    interior_min = st.number_input("Min Interior", min_value=0.0, value=20.0, step=5.0)
+                    interior_max = st.number_input("Max Interior", min_value=0.0, value=1000.0, step=10.0)
+                else:
+                    interior_min = None
+                    interior_max = None
+            
+            with col2:
+                st.markdown("**Price per m² Range (EUR/m²)**")
+                enable_price_m2_filter = st.checkbox("Enable price/m² filtering", value=False, key="enable_price_m2_main")
+                if enable_price_m2_filter:
+                    price_m2_min = st.number_input("Minimum Price/m²", min_value=0, value=100, step=50, key="price_m2_min_main")
+                    price_m2_max = st.number_input("Maximum Price/m²", min_value=0, value=10000, step=100, key="price_m2_max_main")
+                else:
+                    price_m2_min = None
+                    price_m2_max = None
+                
+                st.markdown("**Land Area Range (m²)**")
+                st.caption("For properties with land (houses, land types)")
+                enable_land_filter = st.checkbox("Enable land area filtering", value=False)
+                if enable_land_filter:
+                    land_min = st.number_input("Min Land", min_value=0.0, value=100.0, step=50.0)
+                    land_max = st.number_input("Max Land", min_value=0.0, value=100000.0, step=500.0)
+                else:
+                    land_min = None
+                    land_max = None
+        
+        with filter_subtabs[2]:
+            st.markdown("#### Property Characteristics")
+            st.caption("Filter by property type, finishing, and other details")
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.markdown("**Property Type**")
+                enable_type_filter = st.checkbox("Filter by property type", value=False)
+                if enable_type_filter:
+                    # Note: Types vary by property category
+                    type_filter_values = st.text_input(
+                        "Property types (comma-separated)",
+                        help="Examples: 'New project', 'Secondary market', 'House', 'Cottage', etc.",
+                        placeholder="e.g., New project, Secondary market"
+                    )
+                    if type_filter_values:
+                        type_filter_list = [t.strip() for t in type_filter_values.split(',')]
+                    else:
+                        type_filter_list = None
+                else:
+                    type_filter_list = None
+                
+                st.markdown("**Finishing Quality**")
+                st.caption("For apartments and houses")
+                enable_finishing_filter = st.checkbox("Filter by finishing", value=False)
+                if enable_finishing_filter:
+                    finishing_filter_values = st.text_input(
+                        "Finishing types (comma-separated)",
+                        help="Examples: 'Renovated', 'Good condition', 'Needs renovation', etc.",
+                        placeholder="e.g., Renovated, Good condition"
+                    )
+                    if finishing_filter_values:
+                        finishing_filter_list = [f.strip() for f in finishing_filter_values.split(',')]
+                    else:
+                        finishing_filter_list = None
+                else:
+                    finishing_filter_list = None
+            
+            with col2:
+                st.markdown("**Number of Parts/Units**")
+                st.caption("For properties with multiple units")
+                enable_parts_filter = st.checkbox("Filter by number of parts", value=False)
+                if enable_parts_filter:
+                    parts_min = st.number_input("Min parts", min_value=1, value=1, step=1)
+                    parts_max = st.number_input("Max parts", min_value=1, value=10, step=1)
+                else:
+                    parts_min = None
+                    parts_max = None
+                
+                st.markdown("**Category Filter**")
+                st.caption("Specific property categories")
+                enable_category_filter = st.checkbox("Filter by category", value=False)
+                if enable_category_filter:
+                    category_filter_values = st.text_input(
+                        "Categories (comma-separated)",
+                        help="Examples: 'Apartment', 'House', 'Land plot', etc.",
+                        placeholder="e.g., Apartment, House"
+                    )
+                    if category_filter_values:
+                        category_filter_list = [c.strip() for c in category_filter_values.split(',')]
+                    else:
+                        category_filter_list = None
+                else:
+                    category_filter_list = None
+                
+                st.markdown("**Municipality Filter**")
+                st.caption("Filter by specific municipalities")
+                enable_municipality_filter = st.checkbox("Filter by municipality", value=False)
+                if enable_municipality_filter:
+                    municipality_filter_values = st.text_input(
+                        "Municipalities (comma-separated)",
+                        help="Examples: 'Rīga', 'Jūrmala', 'Liepāja', etc.",
+                        placeholder="e.g., Rīga, Jūrmala"
+                    )
+                    if municipality_filter_values:
+                        municipality_filter_list = [m.strip() for m in municipality_filter_values.split(',')]
+                    else:
+                        municipality_filter_list = None
+                else:
+                    municipality_filter_list = None
     
     with settings_tabs[4]:
         st.markdown("##### Display Options")
@@ -940,6 +1051,53 @@ def show_final_indexes_master_view():
                                 (temp_price_m2 <= price_m2_max_use)
                             ].copy()
                         
+                        # Apply interior area filter if enabled
+                        if interior_min is not None and interior_max is not None:
+                            if 'Interior_Area_m2' in df_filtered.columns:
+                                df_filtered = df_filtered[
+                                    (df_filtered['Interior_Area_m2'].notna()) &
+                                    (df_filtered['Interior_Area_m2'] >= interior_min) & 
+                                    (df_filtered['Interior_Area_m2'] <= interior_max)
+                                ].copy()
+                        
+                        # Apply land area filter if enabled
+                        if land_min is not None and land_max is not None:
+                            if 'Land_m2' in df_filtered.columns:
+                                df_filtered = df_filtered[
+                                    (df_filtered['Land_m2'].notna()) &
+                                    (df_filtered['Land_m2'] >= land_min) & 
+                                    (df_filtered['Land_m2'] <= land_max)
+                                ].copy()
+                        
+                        # Apply property type filter if enabled
+                        if type_filter_list is not None and len(type_filter_list) > 0:
+                            if 'Type' in df_filtered.columns:
+                                df_filtered = df_filtered[df_filtered['Type'].isin(type_filter_list)].copy()
+                        
+                        # Apply finishing filter if enabled
+                        if finishing_filter_list is not None and len(finishing_filter_list) > 0:
+                            if 'Finishing' in df_filtered.columns:
+                                df_filtered = df_filtered[df_filtered['Finishing'].isin(finishing_filter_list)].copy()
+                        
+                        # Apply parts filter if enabled
+                        if parts_min is not None and parts_max is not None:
+                            if 'Dom_Parts' in df_filtered.columns:
+                                df_filtered = df_filtered[
+                                    (df_filtered['Dom_Parts'].notna()) &
+                                    (df_filtered['Dom_Parts'] >= parts_min) & 
+                                    (df_filtered['Dom_Parts'] <= parts_max)
+                                ].copy()
+                        
+                        # Apply category filter if enabled
+                        if category_filter_list is not None and len(category_filter_list) > 0:
+                            if 'Category' in df_filtered.columns:
+                                df_filtered = df_filtered[df_filtered['Category'].isin(category_filter_list)].copy()
+                        
+                        # Apply municipality filter if enabled
+                        if municipality_filter_list is not None and len(municipality_filter_list) > 0:
+                            if 'municipality' in df_filtered.columns:
+                                df_filtered = df_filtered[df_filtered['municipality'].isin(municipality_filter_list)].copy()
+                        
                         # Apply duplicate removal if enabled
                         records_before_dedup = len(df_filtered)
                         if duplicate_method == "Remove exact duplicates":
@@ -1042,6 +1200,15 @@ def show_final_indexes_master_view():
             st.session_state['enable_price_m2_filter'] = enable_price_m2_filter
             st.session_state['per_category_settings'] = per_category_settings
             st.session_state['use_per_category_filters'] = use_per_category_filters
+            
+            # Store property-specific filters
+            st.session_state['enable_interior_filter'] = enable_interior_filter
+            st.session_state['enable_land_filter'] = enable_land_filter
+            st.session_state['enable_type_filter'] = enable_type_filter
+            st.session_state['enable_finishing_filter'] = enable_finishing_filter
+            st.session_state['enable_parts_filter'] = enable_parts_filter
+            st.session_state['enable_category_filter'] = enable_category_filter
+            st.session_state['enable_municipality_filter'] = enable_municipality_filter
         
         # Success message with summary
         total_transactions = sum(tc['total'] for tc in transaction_counts.values())
@@ -1377,6 +1544,8 @@ def show_final_indexes_master_view():
                 st.markdown("#### Filters Applied")
                 
                 filter_info = []
+                
+                # Basic filters
                 if st.session_state.get('enable_date_filter', False):
                     filter_info.append("✅ Date Range Filter")
                 if st.session_state.get('enable_price_filter', False):
@@ -1385,6 +1554,24 @@ def show_final_indexes_master_view():
                     filter_info.append("✅ Area Range Filter")
                 if st.session_state.get('enable_price_m2_filter', False):
                     filter_info.append("✅ Price/m² Range Filter")
+                
+                # Property-specific filters
+                if st.session_state.get('enable_interior_filter', False):
+                    filter_info.append("✅ Interior Area Filter")
+                if st.session_state.get('enable_land_filter', False):
+                    filter_info.append("✅ Land Area Filter")
+                if st.session_state.get('enable_type_filter', False):
+                    filter_info.append("✅ Property Type Filter")
+                if st.session_state.get('enable_finishing_filter', False):
+                    filter_info.append("✅ Finishing Quality Filter")
+                if st.session_state.get('enable_parts_filter', False):
+                    filter_info.append("✅ Number of Parts Filter")
+                if st.session_state.get('enable_category_filter', False):
+                    filter_info.append("✅ Category Filter")
+                if st.session_state.get('enable_municipality_filter', False):
+                    filter_info.append("✅ Municipality Filter")
+                
+                # Duplicate removal
                 if duplicate_method != "None":
                     filter_info.append(f"✅ Duplicate Removal: {duplicate_method}")
                 
