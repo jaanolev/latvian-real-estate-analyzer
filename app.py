@@ -679,7 +679,9 @@ def show_final_indexes_master_view():
                         for idx_config in category_indexes:
                             index_name = idx_config["name"]
                             
-                            with st.expander(f"🎯 {index_name}", expanded=False):
+                            # Use container with header instead of nested expander
+                            st.markdown(f"##### 🎯 {index_name}")
+                            with st.container():
                                 all_regions = ['Rīga', 'Pierīga', 'Kurzeme', 'Vidzeme', 'Zemgale', 'Latgale', 'Unknown']
                                 idx_regions = st.multiselect(
                                     "Regions",
@@ -736,6 +738,9 @@ def show_final_indexes_master_view():
                                     'date_from': idx_date_from,
                                     'date_to': idx_date_to
                                 }
+                                
+                                # Visual separator between indexes
+                                st.markdown("---")
                         
                         per_category_settings[category] = {
                             'filter_level': 'index',
