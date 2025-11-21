@@ -98,8 +98,12 @@ def calculate_price_per_m2(df, use_total_eur_m2=False, property_type='Houses'):
         df['Price_per_m2'] = df['Price_EUR'] / df['Sold_Area_m2']
     return df
 
-def aggregate_by_region_quarter(df, use_total_eur_m2=False, property_type='Houses'):
-    """Aggregate data by region and quarter"""
+def aggregate_by_region_quarter(df, use_total_eur_m2=False, property_type='Houses', _cache_version=2):
+    """Aggregate data by region and quarter
+    
+    Args:
+        _cache_version: Internal version number to bust Streamlit cache when aggregation logic changes
+    """
     df = calculate_price_per_m2(df, use_total_eur_m2, property_type)
     
     # Filter out invalid Year and Quarter values
@@ -138,16 +142,20 @@ def aggregate_by_region_quarter(df, use_total_eur_m2=False, property_type='House
         agg_df = df.groupby(['region_riga_separate', 'Year', 'Quarter', 'YearQuarter', 'YearQuarterDate']).agg({
             'Price_EUR': 'sum',
             'Sold_Area_m2': 'sum',
-            'Price_per_m2': 'mean'  # Average the Total_EUR_m2 values
+            'Price_per_m2': 'mean',  # Average the Total_EUR_m2 values
+            'Date': 'count'  # Count number of transactions
         }).reset_index()
+        agg_df.rename(columns={'Date': 'Transaction_Count'}, inplace=True)
         agg_df['Avg_Price_per_m2'] = agg_df['Price_per_m2']
     else:
         # Aggregate using calculated method
         agg_df = df.groupby(['region_riga_separate', 'Year', 'Quarter', 'YearQuarter', 'YearQuarterDate']).agg({
             'Price_EUR': 'sum',
             'Sold_Area_m2': 'sum',
-            'Price_per_m2': 'mean'
+            'Price_per_m2': 'mean',
+            'Date': 'count'  # Count number of transactions
         }).reset_index()
+        agg_df.rename(columns={'Date': 'Transaction_Count'}, inplace=True)
         # Use the mean of individual prices, not recalculated from totals
         # This prevents extreme values when some transactions have tiny areas
         agg_df['Avg_Price_per_m2'] = agg_df['Price_per_m2']
@@ -1052,7 +1060,7 @@ def show_final_indexes_master_view():
                                 initial_indexes[index_name] = {
                                     'index': index_table_initial.loc[index_name] if index_name in index_table_initial.index else index_table_initial.iloc[0],
                                     'prices': prices_table_initial.loc[index_name] if index_name in prices_table_initial.index else prices_table_initial.iloc[0],
-                                    'counts': agg_df_initial.groupby('YearQuarter')['Price_EUR'].count(),
+                                    'counts': agg_df_initial.groupby('YearQuarter')['Transaction_Count'].sum(),
                                     'category': category,
                                     'base': base_period,
                                     'regions': regions_to_combine
@@ -1214,10 +1222,20 @@ def show_final_indexes_master_view():
                         
                         # Store the index (it should have one row with the index_name)
                         if len(index_table) > 0:
+                            # Calculate transaction counts
+                            quarter_counts = agg_df.groupby('YearQuarter')['Transaction_Count'].sum()
+                            
+                            # Warn if many quarters were removed by filtering
+                            if index_name in initial_indexes and initial_indexes[index_name]:
+                                initial_quarters = len(initial_indexes[index_name]['counts'])
+                                filtered_quarters = len(quarter_counts)
+                                if filtered_quarters < initial_quarters * 0.5:  # More than 50% quarters removed
+                                    st.warning(f"⚠️ **{index_name}**: Filters removed {initial_quarters - filtered_quarters} quarters! ({filtered_quarters}/{initial_quarters} remaining). Consider relaxing filters.")
+                            
                             final_indexes[index_name] = {
                                 'index': index_table.loc[index_name] if index_name in index_table.index else index_table.iloc[0],
                                 'prices': prices_table.loc[index_name] if index_name in prices_table.index else prices_table.iloc[0],
-                                'counts': agg_df.groupby('YearQuarter')['Price_EUR'].count(),
+                                'counts': quarter_counts,
                                 'category': category,
                                 'base': base_period,
                                 'regions': regions_to_combine
@@ -1551,6 +1569,17 @@ def show_final_indexes_master_view():
                     
                     # Add counts plot
                     st.markdown("#### Transaction Counts by Quarter")
+                    
+                    # Debug: Show actual count values
+                    if st.checkbox(f"🐛 Debug counts for {category}", value=False, key=f"debug_counts_{category}"):
+                        for index_name, index_info in indexes:
+                            if 'counts' in index_info:
+                                counts_series = index_info['counts']
+                                st.write(f"**{index_name}** - Sample counts:")
+                                st.write(f"  Type: {type(counts_series)}")
+                                st.write(f"  First 5 values: {counts_series.head()}")
+                                st.write(f"  Min: {counts_series.min()}, Max: {counts_series.max()}, Mean: {counts_series.mean():.1f}")
+                    
                     fig_counts = go.Figure()
                     
                     for index_name, index_info in indexes:
@@ -1560,7 +1589,9 @@ def show_final_indexes_master_view():
                                 x=counts_series.index,
                                 y=counts_series.values,
                                 name=index_name,
-                                opacity=0.7
+                                opacity=0.7,
+                                text=counts_series.values,  # Show values on bars
+                                textposition='outside'  # Display text outside bars
                             ))
                     
                     fig_counts.update_layout(
@@ -1570,6 +1601,7 @@ def show_final_indexes_master_view():
                         hovermode='x unified',
                         height=400,
                         barmode='group',
+                        barnorm=None,  # Explicitly disable normalization
                         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
                     )
                     fig_counts.update_xaxes(tickangle=45)
@@ -2168,59 +2200,188 @@ def show_final_indexes_master_view():
         # Tab 5: Export
         with tabs[4]:
             st.markdown('<div class="data-section">', unsafe_allow_html=True)
-            st.subheader("Export Final Indexes")
-            st.caption("Download final indexes in various formats")
+            st.subheader("📥 Export Post-Filter Results")
+            st.caption("Download comprehensive report with indexes, prices, transaction counts, and all filter details")
             
-            # Create comprehensive dataframe
-            all_data = {}
+            st.info("ℹ️ **Note**: This export contains POST-FILTER data (after all filters, duplicates, and outlier removal)")
+            
+            # Create comprehensive datasets
+            # 1. Indexes (Post-Filter)
+            indexes_data = {}
             for index_name, index_info in final_indexes.items():
-                all_data[index_name] = index_info['index']
+                indexes_data[index_name] = index_info['index']
+            indexes_df = pd.DataFrame(indexes_data).T
             
-            export_df = pd.DataFrame(all_data).T
+            # 2. Prices per m² (Post-Filter)
+            prices_data = {}
+            for index_name, index_info in final_indexes.items():
+                if 'prices' in index_info:
+                    prices_data[index_name] = index_info['prices']
+            prices_df = pd.DataFrame(prices_data).T
             
-            # Display preview
-            st.markdown("### 📋 Preview")
-            st.dataframe(export_df.round(4), use_container_width=True, height=300)
+            # 3. Transaction Counts (Post-Filter)
+            counts_data = {}
+            for index_name, index_info in final_indexes.items():
+                if 'counts' in index_info:
+                    counts_data[index_name] = index_info['counts']
+            counts_df = pd.DataFrame(counts_data).T
+            
+            # Display previews in tabs
+            preview_tabs = st.tabs(["📊 Indexes", "💰 Prices/m²", "📈 Transaction Counts"])
+            
+            with preview_tabs[0]:
+                st.markdown("### Price Index Values (Post-Filter)")
+                st.dataframe(indexes_df.round(4), use_container_width=True, height=300)
+            
+            with preview_tabs[1]:
+                st.markdown("### Average Price per m² (EUR) - Post-Filter")
+                st.dataframe(prices_df.round(2), use_container_width=True, height=300)
+            
+            with preview_tabs[2]:
+                st.markdown("### Transaction Counts by Quarter (Post-Filter)")
+                st.dataframe(counts_df.fillna(0).astype(int), use_container_width=True, height=300)
+            
+            st.markdown("---")
             
             # Download buttons
             col1, col2 = st.columns(2)
             
             with col1:
-                # CSV download
-                csv_data = export_df.to_csv()
+                st.markdown("### 📄 Simple CSV Export")
+                csv_data = indexes_df.to_csv()
                 st.download_button(
-                    label="⬇️ Download CSV",
+                    label="⬇️ Download Indexes Only (CSV)",
                     data=csv_data,
-                    file_name=f"latvia_final_indexes_{datetime.now().strftime('%Y%m%d')}.csv",
+                    file_name=f"LV_indexes_postfilter_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
                     mime="text/csv",
                     use_container_width=True
                 )
             
             with col2:
-                # Excel download
+                st.markdown("### 📊 Comprehensive Excel Report")
+                
+                # Create comprehensive Excel file
                 output = io.BytesIO()
                 with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                    export_df.to_excel(writer, sheet_name='Final Indexes')
+                    # Sheet 1: Indexes (Post-Filter)
+                    indexes_df.to_excel(writer, sheet_name='Indexes (Post-Filter)')
                     
-                    # Add metadata sheet
+                    # Sheet 2: Prices per m² (Post-Filter)
+                    prices_df.to_excel(writer, sheet_name='Prices per m² (Post-Filter)')
+                    
+                    # Sheet 3: Transaction Counts (Post-Filter)
+                    counts_df.fillna(0).astype(int).to_excel(writer, sheet_name='Transaction Counts (Post)')
+                    
+                    # Sheet 4: Initial vs Filtered Comparison
+                    comparison_data = []
+                    for index_name in final_indexes.keys():
+                        initial_count = 0
+                        filtered_count = 0
+                        
+                        if index_name in initial_indexes and initial_indexes[index_name] and 'counts' in initial_indexes[index_name]:
+                            initial_count = int(initial_indexes[index_name]['counts'].sum())
+                        
+                        if 'counts' in final_indexes[index_name]:
+                            filtered_count = int(final_indexes[index_name]['counts'].sum())
+                        
+                        comparison_data.append({
+                            'Index Name': index_name,
+                            'Initial Transactions': initial_count,
+                            'Post-Filter Transactions': filtered_count,
+                            'Removed': initial_count - filtered_count,
+                            'Removal %': f"{((initial_count - filtered_count) / initial_count * 100) if initial_count > 0 else 0:.1f}%"
+                        })
+                    
+                    comparison_df = pd.DataFrame(comparison_data)
+                    comparison_df.to_excel(writer, sheet_name='Data Quality Summary', index=False)
+                    
+                    # Sheet 5: Index Metadata
                     metadata = []
                     for index_name, index_info in final_indexes.items():
                         metadata.append({
                             'Index Name': index_name,
                             'Category': index_info['category'],
                             'Base Period': index_info['base'],
-                            'Regions': ', '.join(index_info['regions'])
+                            'Regions Included': ' + '.join(index_info['regions']),
+                            'First Quarter': index_info['index'].index[0] if len(index_info['index']) > 0 else 'N/A',
+                            'Last Quarter': index_info['index'].index[-1] if len(index_info['index']) > 0 else 'N/A',
+                            'Total Quarters': len(index_info['index']),
+                            'Latest Index Value': f"{index_info['index'].iloc[-1]:.4f}" if len(index_info['index']) > 0 else 'N/A'
                         })
                     metadata_df = pd.DataFrame(metadata)
-                    metadata_df.to_excel(writer, sheet_name='Metadata', index=False)
+                    metadata_df.to_excel(writer, sheet_name='Index Metadata', index=False)
+                    
+                    # Sheet 6: Analysis Settings
+                    settings_data = {
+                        'Setting': [
+                            'Export Date',
+                            'Export Time',
+                            'Data Type',
+                            'Price Calculation Method',
+                            'Duplicate Removal Method',
+                            'Outlier Detection Method',
+                            'Moving Average (Quarters)',
+                            'Date Filter Enabled',
+                            'Price Filter Enabled',
+                            'Area Filter Enabled',
+                            'Price/m² Filter Enabled',
+                            'Per-Category Filters',
+                            'Total Indexes Calculated',
+                            'Total Transactions (Post-Filter)',
+                            'Total Transactions (Initial)',
+                            'Overall Removal %'
+                        ],
+                        'Value': [
+                            datetime.now().strftime('%Y-%m-%d'),
+                            datetime.now().strftime('%H:%M:%S'),
+                            'Post-Filter (Final Results)',
+                            price_method,
+                            duplicate_method,
+                            outlier_method,
+                            ma_quarters if ma_quarters > 1 else 'None',
+                            'Yes' if st.session_state.get('enable_date_filter', False) else 'No',
+                            'Yes' if st.session_state.get('enable_price_filter', False) else 'No',
+                            'Yes' if st.session_state.get('enable_area_filter', False) else 'No',
+                            'Yes' if st.session_state.get('enable_price_m2_filter', False) else 'No',
+                            'Yes' if st.session_state.get('use_per_category_filters', False) else 'No',
+                            len(final_indexes),
+                            sum(int(idx_info['counts'].sum()) for idx_info in final_indexes.values() if 'counts' in idx_info),
+                            sum(int(initial_indexes[name]['counts'].sum()) for name in final_indexes.keys() if name in initial_indexes and initial_indexes[name] and 'counts' in initial_indexes[name]),
+                            f"{(1 - sum(int(idx_info['counts'].sum()) for idx_info in final_indexes.values() if 'counts' in idx_info) / max(1, sum(int(initial_indexes[name]['counts'].sum()) for name in final_indexes.keys() if name in initial_indexes and initial_indexes[name] and 'counts' in initial_indexes[name]))) * 100:.1f}%"
+                        ]
+                    }
+                    settings_df = pd.DataFrame(settings_data)
+                    settings_df.to_excel(writer, sheet_name='Analysis Settings', index=False)
+                    
+                    # Sheet 7: Per-Category Filter Details (if applicable)
+                    if st.session_state.get('use_per_category_filters', False):
+                        per_cat_settings = st.session_state.get('per_category_settings', {})
+                        if per_cat_settings:
+                            filter_details = []
+                            for category, settings in per_cat_settings.items():
+                                filter_details.append({
+                                    'Category': category,
+                                    'Regions': ' + '.join(settings.get('regions', [])) if settings.get('regions') else 'All',
+                                    'Price/m² Min': settings.get('price_m2_min') if settings.get('price_m2_min') is not None else 'N/A',
+                                    'Price/m² Max': settings.get('price_m2_max') if settings.get('price_m2_max') is not None else 'N/A',
+                                    'Price Min (EUR)': settings.get('price_min') if settings.get('price_min') is not None else 'N/A',
+                                    'Price Max (EUR)': settings.get('price_max') if settings.get('price_max') is not None else 'N/A',
+                                    'Area Min (m²)': settings.get('area_min') if settings.get('area_min') is not None else 'N/A',
+                                    'Area Max (m²)': settings.get('area_max') if settings.get('area_max') is not None else 'N/A',
+                                    'Date From': str(settings.get('date_from')) if settings.get('date_from') else 'N/A',
+                                    'Date To': str(settings.get('date_to')) if settings.get('date_to') else 'N/A'
+                                })
+                            filter_details_df = pd.DataFrame(filter_details)
+                            filter_details_df.to_excel(writer, sheet_name='Per-Category Filters', index=False)
                 
                 excel_data = output.getvalue()
                 st.download_button(
-                    label="⬇️ Download Excel",
+                    label="⬇️ Download Complete Report (Excel)",
                     data=excel_data,
-                    file_name=f"latvia_final_indexes_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                    file_name=f"LV_PostFilter_Report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    use_container_width=True
+                    use_container_width=True,
+                    help="Comprehensive Excel file with indexes, prices, counts, metadata, and all filter details"
                 )
             
             st.markdown('</div>', unsafe_allow_html=True)
@@ -2228,6 +2389,17 @@ def show_final_indexes_master_view():
 # Main app
 def main():
     st.title("🏠 Baltic Real Estate Price Index Analyzer")
+    
+    # Cache version check - automatically clear stale session state when code updates
+    CODE_VERSION = "v2.2_counts_debug_fix"
+    if 'code_version' not in st.session_state or st.session_state['code_version'] != CODE_VERSION:
+        # Clear all cached results when code version changes
+        keys_to_clear = [k for k in st.session_state.keys() if k != 'code_version']
+        for key in keys_to_clear:
+            del st.session_state[key]
+        st.session_state['code_version'] = CODE_VERSION
+        if len(keys_to_clear) > 0:
+            st.success("✅ Code updated! Session state cleared. Click 'Calculate Indexes' to see new results.")
     
     # Dataset/Country selector at the very top
     st.markdown("### 🌍 Select Dataset")
