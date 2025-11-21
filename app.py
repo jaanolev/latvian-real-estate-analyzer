@@ -617,45 +617,45 @@ def show_final_indexes_master_view():
                         
                         st.markdown("---")
                         col1, col2 = st.columns(2)
-                    
-                    with col1:
-                        st.markdown("**Price/m² Range**")
-                        use_price_m2 = st.checkbox(f"Custom price/m² filter", key=f"cat_price_m2_{category}")
-                        if use_price_m2:
-                            cat_price_m2_min = st.number_input(f"Min", 0, 50000, 100, 50, key=f"cat_price_m2_min_{category}")
-                            cat_price_m2_max = st.number_input(f"Max", 0, 50000, 10000, 100, key=f"cat_price_m2_max_{category}")
-                        else:
-                            cat_price_m2_min = None
-                            cat_price_m2_max = None
                         
-                        st.markdown("**Price Range (EUR)**")
-                        use_price = st.checkbox(f"Custom price filter", key=f"cat_price_{category}")
-                        if use_price:
-                            cat_price_min = st.number_input(f"Min", 0, 10000000, 1000, 1000, key=f"cat_price_min_{category}")
-                            cat_price_max = st.number_input(f"Max", 0, 10000000, 10000000, 10000, key=f"cat_price_max_{category}")
-                        else:
-                            cat_price_min = None
-                            cat_price_max = None
-                    
-                    with col2:
-                        st.markdown("**Area Range (m²)**")
-                        use_area = st.checkbox(f"Custom area filter", key=f"cat_area_{category}")
-                        if use_area:
-                            cat_area_min = st.number_input(f"Min", 0.0, 100000.0, 10.0, 5.0, key=f"cat_area_min_{category}")
-                            cat_area_max = st.number_input(f"Max", 0.0, 100000.0, 10000.0, 50.0, key=f"cat_area_max_{category}")
-                        else:
-                            cat_area_min = None
-                            cat_area_max = None
+                        with col1:
+                            st.markdown("**Price/m² Range**")
+                            use_price_m2 = st.checkbox(f"Custom price/m² filter", key=f"cat_price_m2_{category}")
+                            if use_price_m2:
+                                cat_price_m2_min = st.number_input(f"Min", 0, 50000, 100, 50, key=f"cat_price_m2_min_{category}")
+                                cat_price_m2_max = st.number_input(f"Max", 0, 50000, 10000, 100, key=f"cat_price_m2_max_{category}")
+                            else:
+                                cat_price_m2_min = None
+                                cat_price_m2_max = None
+                            
+                            st.markdown("**Price Range (EUR)**")
+                            use_price = st.checkbox(f"Custom price filter", key=f"cat_price_{category}")
+                            if use_price:
+                                cat_price_min = st.number_input(f"Min", 0, 10000000, 1000, 1000, key=f"cat_price_min_{category}")
+                                cat_price_max = st.number_input(f"Max", 0, 10000000, 10000000, 10000, key=f"cat_price_max_{category}")
+                            else:
+                                cat_price_min = None
+                                cat_price_max = None
                         
-                        st.markdown("**Date Range**")
-                        use_date = st.checkbox(f"Custom date filter", key=f"cat_date_{category}")
-                        if use_date:
-                            cat_date_from = st.date_input(f"From", pd.Timestamp("2014-01-01"), key=f"cat_date_from_{category}")
-                            cat_date_to = st.date_input(f"To", pd.Timestamp.now(), key=f"cat_date_to_{category}")
-                        else:
-                            cat_date_from = None
-                            cat_date_to = None
-                    
+                        with col2:
+                            st.markdown("**Area Range (m²)**")
+                            use_area = st.checkbox(f"Custom area filter", key=f"cat_area_{category}")
+                            if use_area:
+                                cat_area_min = st.number_input(f"Min", 0.0, 100000.0, 10.0, 5.0, key=f"cat_area_min_{category}")
+                                cat_area_max = st.number_input(f"Max", 0.0, 100000.0, 10000.0, 50.0, key=f"cat_area_max_{category}")
+                            else:
+                                cat_area_min = None
+                                cat_area_max = None
+                            
+                            st.markdown("**Date Range**")
+                            use_date = st.checkbox(f"Custom date filter", key=f"cat_date_{category}")
+                            if use_date:
+                                cat_date_from = st.date_input(f"From", pd.Timestamp("2014-01-01"), key=f"cat_date_from_{category}")
+                                cat_date_to = st.date_input(f"To", pd.Timestamp.now(), key=f"cat_date_to_{category}")
+                            else:
+                                cat_date_from = None
+                                cat_date_to = None
+                        
                         per_category_settings[category] = {
                             'filter_level': 'category',
                             'regions': selected_regions if len(selected_regions) > 0 else None,
@@ -669,7 +669,7 @@ def show_final_indexes_master_view():
                             'date_to': cat_date_to
                         }
                     
-                    else:  # Individual indexes
+                    else:  # Individual indexes (filter_level == "Individual indexes")
                         st.markdown("**📊 Configure Each Index Separately**")
                         
                         # Get indexes for this category
