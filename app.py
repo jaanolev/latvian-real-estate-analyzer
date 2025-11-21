@@ -670,74 +670,128 @@ def show_final_indexes_master_view():
                         }
                     
                     else:  # Individual indexes (filter_level == "Individual indexes")
-                        st.markdown("**📊 Configure Each Index Separately**")
+                        st.markdown("**📊 Manage and Configure Indexes**")
                         
-                        # Get indexes for this category
-                        category_indexes = final_indexes_config[category]["indexes"]
+                        # Get default indexes for this category
+                        default_indexes = final_indexes_config[category]["indexes"]
+                        
+                        # Index management section
+                        st.markdown("**🎛️ Index Selection**")
+                        
+                        # Let user choose which default indexes to keep
+                        default_index_names = [idx["name"] for idx in default_indexes]
+                        selected_default_indexes = st.multiselect(
+                            "Default indexes to include:",
+                            options=default_index_names,
+                            default=default_index_names,
+                            key=f"selected_defaults_{category}",
+                            help="Uncheck to remove default indexes you don't need"
+                        )
+                        
+                        # Add custom indexes
+                        st.markdown("**➕ Add Custom Indexes**")
+                        num_custom = st.number_input(
+                            "Number of custom indexes to add:",
+                            min_value=0,
+                            max_value=10,
+                            value=0,
+                            step=1,
+                            key=f"num_custom_{category}",
+                            help="Create your own indexes with custom regional splits"
+                        )
+                        
+                        custom_indexes = []
+                        for i in range(int(num_custom)):
+                            st.markdown(f"**Custom Index {i+1}**")
+                            custom_col1, custom_col2 = st.columns(2)
+                            
+                            with custom_col1:
+                                custom_name = st.text_input(
+                                    "Index name:",
+                                    value=f"{category} CUSTOM {i+1}",
+                                    key=f"custom_name_{category}_{i}"
+                                )
+                            
+                            with custom_col2:
+                                all_regions = ['Rīga', 'Pierīga', 'Kurzeme', 'Vidzeme', 'Zemgale', 'Latgale', 'Unknown']
+                                custom_regions = st.multiselect(
+                                    "Regions:",
+                                    options=all_regions,
+                                    default=['Rīga'],
+                                    key=f"custom_regions_{category}_{i}"
+                                )
+                            
+                            if custom_regions:
+                                custom_indexes.append({
+                                    "name": custom_name,
+                                    "regions": custom_regions
+                                })
+                        
+                        st.markdown("---")
+                        
+                        # Now configure filters for each selected/custom index
                         index_filters = {}
                         
-                        for idx_config in category_indexes:
-                            index_name = idx_config["name"]
-                            
-                            # Use container with header instead of nested expander
-                            st.markdown(f"##### 🎯 {index_name}")
-                            with st.container():
-                                all_regions = ['Rīga', 'Pierīga', 'Kurzeme', 'Vidzeme', 'Zemgale', 'Latgale', 'Unknown']
-                                idx_regions = st.multiselect(
-                                    "Regions",
-                                    options=all_regions,
-                                    default=[],
-                                    key=f"idx_regions_{category}_{index_name}",
-                                    help="Leave empty for all regions"
-                                )
+                        # Process selected default indexes
+                        for idx_config in default_indexes:
+                            if idx_config["name"] in selected_default_indexes:
+                                index_name = idx_config["name"]
+                                predefined_regions = idx_config["regions"]
                                 
-                                col1, col2 = st.columns(2)
+                                # Use container with header instead of nested expander
+                                st.markdown(f"##### 🎯 {index_name}")
+                                with st.container():
+                                    # Show predefined regions (not editable for defaults)
+                                    st.caption(f"🌍 Predefined regions: {' + '.join(predefined_regions)}")
                                 
-                                with col1:
-                                    idx_price_m2_enabled = st.checkbox("Price/m² filter", key=f"idx_pm2_{category}_{index_name}")
-                                    if idx_price_m2_enabled:
-                                        idx_price_m2_min = st.number_input("Min", 0, 50000, 100, 50, key=f"idx_pm2_min_{category}_{index_name}")
-                                        idx_price_m2_max = st.number_input("Max", 0, 50000, 10000, 100, key=f"idx_pm2_max_{category}_{index_name}")
-                                    else:
-                                        idx_price_m2_min = None
-                                        idx_price_m2_max = None
                                     
-                                    idx_price_enabled = st.checkbox("Price filter", key=f"idx_price_{category}_{index_name}")
-                                    if idx_price_enabled:
-                                        idx_price_min = st.number_input("Min EUR", 0, 10000000, 1000, 1000, key=f"idx_price_min_{category}_{index_name}")
-                                        idx_price_max = st.number_input("Max EUR", 0, 10000000, 10000000, 10000, key=f"idx_price_max_{category}_{index_name}")
-                                    else:
-                                        idx_price_min = None
-                                        idx_price_max = None
-                                
-                                with col2:
-                                    idx_area_enabled = st.checkbox("Area filter", key=f"idx_area_{category}_{index_name}")
-                                    if idx_area_enabled:
-                                        idx_area_min = st.number_input("Min m²", 0.0, 100000.0, 10.0, 5.0, key=f"idx_area_min_{category}_{index_name}")
-                                        idx_area_max = st.number_input("Max m²", 0.0, 100000.0, 10000.0, 50.0, key=f"idx_area_max_{category}_{index_name}")
-                                    else:
-                                        idx_area_min = None
-                                        idx_area_max = None
+                                    col1, col2 = st.columns(2)
                                     
-                                    idx_date_enabled = st.checkbox("Date filter", key=f"idx_date_{category}_{index_name}")
-                                    if idx_date_enabled:
-                                        idx_date_from = st.date_input("From", pd.Timestamp("2014-01-01"), key=f"idx_date_from_{category}_{index_name}")
-                                        idx_date_to = st.date_input("To", pd.Timestamp.now(), key=f"idx_date_to_{category}_{index_name}")
-                                    else:
-                                        idx_date_from = None
-                                        idx_date_to = None
-                                
-                                index_filters[index_name] = {
-                                    'regions': idx_regions if len(idx_regions) > 0 else None,
-                                    'price_m2_min': idx_price_m2_min,
-                                    'price_m2_max': idx_price_m2_max,
-                                    'price_min': idx_price_min,
-                                    'price_max': idx_price_max,
-                                    'area_min': idx_area_min,
-                                    'area_max': idx_area_max,
-                                    'date_from': idx_date_from,
-                                    'date_to': idx_date_to
-                                }
+                                    with col1:
+                                        idx_price_m2_enabled = st.checkbox("Price/m² filter", key=f"idx_pm2_{category}_{index_name}")
+                                        if idx_price_m2_enabled:
+                                            idx_price_m2_min = st.number_input("Min", 0, 50000, 100, 50, key=f"idx_pm2_min_{category}_{index_name}")
+                                            idx_price_m2_max = st.number_input("Max", 0, 50000, 10000, 100, key=f"idx_pm2_max_{category}_{index_name}")
+                                        else:
+                                            idx_price_m2_min = None
+                                            idx_price_m2_max = None
+                                        
+                                        idx_price_enabled = st.checkbox("Price filter", key=f"idx_price_{category}_{index_name}")
+                                        if idx_price_enabled:
+                                            idx_price_min = st.number_input("Min EUR", 0, 10000000, 1000, 1000, key=f"idx_price_min_{category}_{index_name}")
+                                            idx_price_max = st.number_input("Max EUR", 0, 10000000, 10000000, 10000, key=f"idx_price_max_{category}_{index_name}")
+                                        else:
+                                            idx_price_min = None
+                                            idx_price_max = None
+                                    
+                                    with col2:
+                                        idx_area_enabled = st.checkbox("Area filter", key=f"idx_area_{category}_{index_name}")
+                                        if idx_area_enabled:
+                                            idx_area_min = st.number_input("Min m²", 0.0, 100000.0, 10.0, 5.0, key=f"idx_area_min_{category}_{index_name}")
+                                            idx_area_max = st.number_input("Max m²", 0.0, 100000.0, 10000.0, 50.0, key=f"idx_area_max_{category}_{index_name}")
+                                        else:
+                                            idx_area_min = None
+                                            idx_area_max = None
+                                        
+                                        idx_date_enabled = st.checkbox("Date filter", key=f"idx_date_{category}_{index_name}")
+                                        if idx_date_enabled:
+                                            idx_date_from = st.date_input("From", pd.Timestamp("2014-01-01"), key=f"idx_date_from_{category}_{index_name}")
+                                            idx_date_to = st.date_input("To", pd.Timestamp.now(), key=f"idx_date_to_{category}_{index_name}")
+                                        else:
+                                            idx_date_from = None
+                                            idx_date_to = None
+                                    
+                                    index_filters[index_name] = {
+                                        'regions': None,  # Use predefined regions from index config
+                                        'price_m2_min': idx_price_m2_min,
+                                        'price_m2_max': idx_price_m2_max,
+                                        'price_min': idx_price_min,
+                                        'price_max': idx_price_max,
+                                        'area_min': idx_area_min,
+                                        'area_max': idx_area_max,
+                                        'date_from': idx_date_from,
+                                        'date_to': idx_date_to
+                                    }
                                 
                                 # Add live distribution preview
                                 st.markdown("**📊 Filter Effect Preview**")
@@ -765,13 +819,9 @@ def show_final_indexes_master_view():
                                             df_dist['Date'] = pd.to_datetime(df_dist['Date'], errors='coerce')
                                             df_dist = df_dist.dropna(subset=['Date'])
                                             
-                                            # Filter to index regions
-                                            index_regions = idx_config["regions"]
+                                            # Filter to predefined index regions
+                                            index_regions = predefined_regions
                                             if 'region_riga_separate' in df_dist.columns:
-                                                # Apply per-index region filter if set
-                                                if idx_regions and len(idx_regions) > 0:
-                                                    df_dist = df_dist[df_dist['region_riga_separate'].isin(idx_regions)]
-                                                # Then filter to index regions
                                                 df_dist = df_dist[df_dist['region_riga_separate'].isin(index_regions)]
                                             
                                             # Calculate price per m2
@@ -892,9 +942,176 @@ def show_final_indexes_master_view():
                                 # Visual separator between indexes
                                 st.markdown("---")
                         
+                        # Process custom indexes
+                        for custom_idx in custom_indexes:
+                            index_name = custom_idx["name"]
+                            custom_regions = custom_idx["regions"]
+                            
+                            st.markdown(f"##### ➕ {index_name} (Custom)")
+                            with st.container():
+                                st.caption(f"🌍 Custom regions: {' + '.join(custom_regions)}")
+                                
+                                col1, col2 = st.columns(2)
+                                
+                                with col1:
+                                    idx_price_m2_enabled = st.checkbox("Price/m² filter", key=f"idx_pm2_{category}_{index_name}")
+                                    if idx_price_m2_enabled:
+                                        idx_price_m2_min = st.number_input("Min", 0, 50000, 100, 50, key=f"idx_pm2_min_{category}_{index_name}")
+                                        idx_price_m2_max = st.number_input("Max", 0, 50000, 10000, 100, key=f"idx_pm2_max_{category}_{index_name}")
+                                    else:
+                                        idx_price_m2_min = None
+                                        idx_price_m2_max = None
+                                    
+                                    idx_price_enabled = st.checkbox("Price filter", key=f"idx_price_{category}_{index_name}")
+                                    if idx_price_enabled:
+                                        idx_price_min = st.number_input("Min EUR", 0, 10000000, 1000, 1000, key=f"idx_price_min_{category}_{index_name}")
+                                        idx_price_max = st.number_input("Max EUR", 0, 10000000, 10000000, 10000, key=f"idx_price_max_{category}_{index_name}")
+                                    else:
+                                        idx_price_min = None
+                                        idx_price_max = None
+                                
+                                with col2:
+                                    idx_area_enabled = st.checkbox("Area filter", key=f"idx_area_{category}_{index_name}")
+                                    if idx_area_enabled:
+                                        idx_area_min = st.number_input("Min m²", 0.0, 100000.0, 10.0, 5.0, key=f"idx_area_min_{category}_{index_name}")
+                                        idx_area_max = st.number_input("Max m²", 0.0, 100000.0, 10000.0, 50.0, key=f"idx_area_max_{category}_{index_name}")
+                                    else:
+                                        idx_area_min = None
+                                        idx_area_max = None
+                                    
+                                    idx_date_enabled = st.checkbox("Date filter", key=f"idx_date_{category}_{index_name}")
+                                    if idx_date_enabled:
+                                        idx_date_from = st.date_input("From", pd.Timestamp("2014-01-01"), key=f"idx_date_from_{category}_{index_name}")
+                                        idx_date_to = st.date_input("To", pd.Timestamp.now(), key=f"idx_date_to_{category}_{index_name}")
+                                    else:
+                                        idx_date_from = None
+                                        idx_date_to = None
+                                
+                                index_filters[index_name] = {
+                                    'regions': custom_regions,  # Use custom regions
+                                    'price_m2_min': idx_price_m2_min,
+                                    'price_m2_max': idx_price_m2_max,
+                                    'price_min': idx_price_min,
+                                    'price_max': idx_price_max,
+                                    'area_min': idx_area_min,
+                                    'area_max': idx_area_max,
+                                    'date_from': idx_date_from,
+                                    'date_to': idx_date_to
+                                }
+                                
+                                # Add distribution plot for custom index too
+                                # (same code as for default indexes)
+                                st.markdown("**📊 Filter Effect Preview**")
+                                show_distribution = st.checkbox("Show distribution plot", value=False, key=f"show_dist_{category}_{index_name}")
+                                
+                                if show_distribution:
+                                    prop_type = final_indexes_config[category].get("property_type")
+                                    
+                                    if prop_type:
+                                        try:
+                                            config = property_types[prop_type]
+                                            if config["index_col"] is not None:
+                                                df_dist = pd.read_csv(config["file"], index_col=config["index_col"])
+                                            else:
+                                                df_dist = pd.read_csv(config["file"])
+                                            
+                                            for col in ['Price_EUR', 'Sold_Area_m2', 'Total_EUR_m2', 'Land_EUR_m2']:
+                                                if col in df_dist.columns:
+                                                    df_dist[col] = clean_numeric_column(df_dist[col])
+                                            
+                                            df_dist['Date'] = pd.to_datetime(df_dist['Date'], errors='coerce')
+                                            df_dist = df_dist.dropna(subset=['Date'])
+                                            
+                                            # Filter to custom regions
+                                            if 'region_riga_separate' in df_dist.columns:
+                                                df_dist = df_dist[df_dist['region_riga_separate'].isin(custom_regions)]
+                                            
+                                            # Calculate price per m2
+                                            if prop_type in ['Agricultural land', 'Forest land', 'Land commercial', 'Land residential', 'Other land']:
+                                                df_dist['Price_per_m2'] = df_dist.get('Land_EUR_m2', df_dist['Price_EUR'] / df_dist['Sold_Area_m2'])
+                                            else:
+                                                df_dist['Price_per_m2'] = df_dist.get('Total_EUR_m2', df_dist['Price_EUR'] / df_dist['Sold_Area_m2'])
+                                            
+                                            df_dist = df_dist[
+                                                df_dist['Price_EUR'].notna() & 
+                                                df_dist['Price_per_m2'].notna() &
+                                                (df_dist['Price_EUR'] > 0) &
+                                                (df_dist['Price_per_m2'] > 0)
+                                            ]
+                                            
+                                            if len(df_dist) > 0:
+                                                dist_type = st.radio(
+                                                    "Show distribution of:",
+                                                    options=["Price per m²", "Total Price"],
+                                                    horizontal=True,
+                                                    key=f"dist_type_{category}_{index_name}_custom"
+                                                )
+                                                
+                                                if dist_type == "Price per m²":
+                                                    plot_col = 'Price_per_m2'
+                                                    plot_label = 'Price per m² (EUR/m²)'
+                                                    filter_min = idx_price_m2_min
+                                                    filter_max = idx_price_m2_max
+                                                    filter_enabled = idx_price_m2_enabled
+                                                else:
+                                                    plot_col = 'Price_EUR'
+                                                    plot_label = 'Total Price (EUR)'
+                                                    filter_min = idx_price_min
+                                                    filter_max = idx_price_max
+                                                    filter_enabled = idx_price_enabled
+                                                
+                                                fig_dist = go.Figure()
+                                                fig_dist.add_trace(go.Histogram(
+                                                    x=df_dist[plot_col],
+                                                    nbinsx=50,
+                                                    name='All Data',
+                                                    marker_color='lightblue',
+                                                    opacity=0.7
+                                                ))
+                                                
+                                                if filter_enabled and filter_min is not None and filter_max is not None:
+                                                    fig_dist.add_vline(x=filter_min, line_dash="dash", line_color="red", line_width=2, annotation_text=f"Min: {filter_min:,.0f}", annotation_position="top")
+                                                    fig_dist.add_vline(x=filter_max, line_dash="dash", line_color="red", line_width=2, annotation_text=f"Max: {filter_max:,.0f}", annotation_position="top")
+                                                    fig_dist.add_vrect(x0=filter_min, x1=filter_max, fillcolor="green", opacity=0.1, line_width=0)
+                                                    
+                                                    total_records = len(df_dist)
+                                                    filtered_records = len(df_dist[(df_dist[plot_col] >= filter_min) & (df_dist[plot_col] <= filter_max)])
+                                                    removed_pct = ((total_records - filtered_records) / total_records * 100) if total_records > 0 else 0
+                                                    st.caption(f"📊 **Filter Effect**: {filtered_records:,} / {total_records:,} records ({100-removed_pct:.1f}% kept, {removed_pct:.1f}% removed)")
+                                                
+                                                fig_dist.update_layout(
+                                                    title=f"{index_name} - {plot_label} Distribution",
+                                                    xaxis_title=plot_label,
+                                                    yaxis_title="Frequency",
+                                                    height=350,
+                                                    showlegend=False,
+                                                    margin=dict(l=50, r=50, t=50, b=50)
+                                                )
+                                                
+                                                st.plotly_chart(fig_dist, use_container_width=True)
+                                                
+                                                col_stat1, col_stat2, col_stat3, col_stat4 = st.columns(4)
+                                                with col_stat1:
+                                                    st.metric("Median", f"{df_dist[plot_col].median():,.0f}")
+                                                with col_stat2:
+                                                    st.metric("Mean", f"{df_dist[plot_col].mean():,.0f}")
+                                                with col_stat3:
+                                                    st.metric("Min", f"{df_dist[plot_col].min():,.0f}")
+                                                with col_stat4:
+                                                    st.metric("Max", f"{df_dist[plot_col].max():,.0f}")
+                                            else:
+                                                st.warning("No data available for this custom index configuration")
+                                        except Exception as e:
+                                            st.error(f"Error loading distribution: {str(e)}")
+                                
+                                st.markdown("---")
+                        
+                        # Store custom indexes configuration
                         per_category_settings[category] = {
                             'filter_level': 'index',
-                            'index_filters': index_filters
+                            'index_filters': index_filters,
+                            'custom_indexes': custom_indexes,
+                            'selected_defaults': selected_default_indexes
                         }
         else:
             per_category_settings = {}
@@ -1161,7 +1378,23 @@ def show_final_indexes_master_view():
             for category in selected_categories:
                 category_config = final_indexes_config[category]
                 
-                for index_config in category_config["indexes"]:
+                # Determine which indexes to process based on per-category settings
+                cat_settings = per_category_settings.get(category, {})
+                
+                if cat_settings.get('filter_level') == 'index':
+                    # Use selected defaults + custom indexes
+                    selected_defaults = cat_settings.get('selected_defaults', [idx["name"] for idx in category_config["indexes"]])
+                    indexes_to_process = [idx for idx in category_config["indexes"] if idx["name"] in selected_defaults]
+                    
+                    # Add custom indexes
+                    custom_indexes_list = cat_settings.get('custom_indexes', [])
+                    for custom_idx in custom_indexes_list:
+                        indexes_to_process.append(custom_idx)
+                else:
+                    # Use all default indexes
+                    indexes_to_process = category_config["indexes"]
+                
+                for index_config in indexes_to_process:
                     index_name = index_config["name"]
                     regions_to_combine = index_config["regions"]
                     
