@@ -739,6 +739,156 @@ def show_final_indexes_master_view():
                                     'date_to': idx_date_to
                                 }
                                 
+                                # Add live distribution preview
+                                st.markdown("**📊 Filter Effect Preview**")
+                                show_distribution = st.checkbox("Show distribution plot", value=False, key=f"show_dist_{category}_{index_name}")
+                                
+                                if show_distribution:
+                                    # Load data for this index
+                                    prop_type = final_indexes_config[category].get("property_type")
+                                    
+                                    if prop_type:
+                                        try:
+                                            # Load the data
+                                            config = property_types[prop_type]
+                                            if config["index_col"] is not None:
+                                                df_dist = pd.read_csv(config["file"], index_col=config["index_col"])
+                                            else:
+                                                df_dist = pd.read_csv(config["file"])
+                                            
+                                            # Clean numeric columns
+                                            for col in ['Price_EUR', 'Sold_Area_m2', 'Total_EUR_m2', 'Land_EUR_m2']:
+                                                if col in df_dist.columns:
+                                                    df_dist[col] = clean_numeric_column(df_dist[col])
+                                            
+                                            # Parse dates
+                                            df_dist['Date'] = pd.to_datetime(df_dist['Date'], errors='coerce')
+                                            df_dist = df_dist.dropna(subset=['Date'])
+                                            
+                                            # Filter to index regions
+                                            index_regions = idx_config["regions"]
+                                            if 'region_riga_separate' in df_dist.columns:
+                                                # Apply per-index region filter if set
+                                                if idx_regions and len(idx_regions) > 0:
+                                                    df_dist = df_dist[df_dist['region_riga_separate'].isin(idx_regions)]
+                                                # Then filter to index regions
+                                                df_dist = df_dist[df_dist['region_riga_separate'].isin(index_regions)]
+                                            
+                                            # Calculate price per m2
+                                            if prop_type in ['Agricultural land', 'Forest land', 'Land commercial', 'Land residential', 'Other land']:
+                                                df_dist['Price_per_m2'] = df_dist.get('Land_EUR_m2', df_dist['Price_EUR'] / df_dist['Sold_Area_m2'])
+                                            else:
+                                                df_dist['Price_per_m2'] = df_dist.get('Total_EUR_m2', df_dist['Price_EUR'] / df_dist['Sold_Area_m2'])
+                                            
+                                            # Remove invalid data
+                                            df_dist = df_dist[
+                                                df_dist['Price_EUR'].notna() & 
+                                                df_dist['Price_per_m2'].notna() &
+                                                (df_dist['Price_EUR'] > 0) &
+                                                (df_dist['Price_per_m2'] > 0)
+                                            ]
+                                            
+                                            if len(df_dist) > 0:
+                                                # Toggle between price and price/m²
+                                                dist_type = st.radio(
+                                                    "Show distribution of:",
+                                                    options=["Price per m²", "Total Price"],
+                                                    horizontal=True,
+                                                    key=f"dist_type_{category}_{index_name}"
+                                                )
+                                                
+                                                if dist_type == "Price per m²":
+                                                    plot_col = 'Price_per_m2'
+                                                    plot_label = 'Price per m² (EUR/m²)'
+                                                    filter_min = idx_price_m2_min
+                                                    filter_max = idx_price_m2_max
+                                                    filter_enabled = idx_price_m2_enabled
+                                                else:
+                                                    plot_col = 'Price_EUR'
+                                                    plot_label = 'Total Price (EUR)'
+                                                    filter_min = idx_price_min
+                                                    filter_max = idx_price_max
+                                                    filter_enabled = idx_price_enabled
+                                                
+                                                # Create histogram
+                                                fig_dist = go.Figure()
+                                                
+                                                # Add histogram
+                                                fig_dist.add_trace(go.Histogram(
+                                                    x=df_dist[plot_col],
+                                                    nbinsx=50,
+                                                    name='All Data',
+                                                    marker_color='lightblue',
+                                                    opacity=0.7
+                                                ))
+                                                
+                                                # Add vertical lines for filter thresholds
+                                                if filter_enabled and filter_min is not None and filter_max is not None:
+                                                    # Min threshold line
+                                                    fig_dist.add_vline(
+                                                        x=filter_min,
+                                                        line_dash="dash",
+                                                        line_color="red",
+                                                        line_width=2,
+                                                        annotation_text=f"Min: {filter_min:,.0f}",
+                                                        annotation_position="top"
+                                                    )
+                                                    
+                                                    # Max threshold line
+                                                    fig_dist.add_vline(
+                                                        x=filter_max,
+                                                        line_dash="dash",
+                                                        line_color="red",
+                                                        line_width=2,
+                                                        annotation_text=f"Max: {filter_max:,.0f}",
+                                                        annotation_position="top"
+                                                    )
+                                                    
+                                                    # Shade the accepted range
+                                                    fig_dist.add_vrect(
+                                                        x0=filter_min,
+                                                        x1=filter_max,
+                                                        fillcolor="green",
+                                                        opacity=0.1,
+                                                        line_width=0
+                                                    )
+                                                    
+                                                    # Calculate statistics
+                                                    total_records = len(df_dist)
+                                                    filtered_records = len(df_dist[(df_dist[plot_col] >= filter_min) & (df_dist[plot_col] <= filter_max)])
+                                                    removed_pct = ((total_records - filtered_records) / total_records * 100) if total_records > 0 else 0
+                                                    
+                                                    st.caption(f"📊 **Filter Effect**: {filtered_records:,} / {total_records:,} records ({100-removed_pct:.1f}% kept, {removed_pct:.1f}% removed)")
+                                                
+                                                # Update layout
+                                                fig_dist.update_layout(
+                                                    title=f"{index_name} - {plot_label} Distribution",
+                                                    xaxis_title=plot_label,
+                                                    yaxis_title="Frequency",
+                                                    height=350,
+                                                    showlegend=False,
+                                                    margin=dict(l=50, r=50, t=50, b=50)
+                                                )
+                                                
+                                                st.plotly_chart(fig_dist, use_container_width=True)
+                                                
+                                                # Show statistics
+                                                col_stat1, col_stat2, col_stat3, col_stat4 = st.columns(4)
+                                                with col_stat1:
+                                                    st.metric("Median", f"{df_dist[plot_col].median():,.0f}")
+                                                with col_stat2:
+                                                    st.metric("Mean", f"{df_dist[plot_col].mean():,.0f}")
+                                                with col_stat3:
+                                                    st.metric("Min", f"{df_dist[plot_col].min():,.0f}")
+                                                with col_stat4:
+                                                    st.metric("Max", f"{df_dist[plot_col].max():,.0f}")
+                                            
+                                            else:
+                                                st.warning("No data available for this index configuration")
+                                        
+                                        except Exception as e:
+                                            st.error(f"Error loading distribution: {str(e)}")
+                                
                                 # Visual separator between indexes
                                 st.markdown("---")
                         
