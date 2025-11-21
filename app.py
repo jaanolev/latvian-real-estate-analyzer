@@ -592,19 +592,31 @@ def show_final_indexes_master_view():
         if use_per_category_filters:
             for category in list(final_indexes_config.keys()):
                 with st.expander(f"⚙️ Filters for {category}"):
-                    # Region filter (full width at top)
-                    st.markdown("**🌍 Region Selection**")
-                    all_regions = ['Rīga', 'Pierīga', 'Kurzeme', 'Vidzeme', 'Zemgale', 'Latgale', 'Unknown']
-                    selected_regions = st.multiselect(
-                        f"Select regions (leave empty for all regions)",
-                        options=all_regions,
-                        default=[],
-                        key=f"cat_regions_{category}",
-                        help="Choose specific regions for this index. Empty = use all regions"
+                    st.markdown("**📋 Filter Level**")
+                    filter_level = st.radio(
+                        "Apply filters to:",
+                        options=["Entire category", "Individual indexes"],
+                        key=f"filter_level_{category}",
+                        horizontal=True,
+                        help="Category-level: Same filters for all indexes. Index-level: Different filters per index."
                     )
                     
                     st.markdown("---")
-                    col1, col2 = st.columns(2)
+                    
+                    if filter_level == "Entire category":
+                        # Category-level filtering (current behavior)
+                        st.markdown("**🌍 Region Selection**")
+                        all_regions = ['Rīga', 'Pierīga', 'Kurzeme', 'Vidzeme', 'Zemgale', 'Latgale', 'Unknown']
+                        selected_regions = st.multiselect(
+                            f"Select regions (leave empty for all regions)",
+                            options=all_regions,
+                            default=[],
+                            key=f"cat_regions_{category}",
+                            help="Choose specific regions for all indexes in this category"
+                        )
+                        
+                        st.markdown("---")
+                        col1, col2 = st.columns(2)
                     
                     with col1:
                         st.markdown("**Price/m² Range**")
@@ -644,17 +656,91 @@ def show_final_indexes_master_view():
                             cat_date_from = None
                             cat_date_to = None
                     
-                    per_category_settings[category] = {
-                        'regions': selected_regions if len(selected_regions) > 0 else None,
-                        'price_m2_min': cat_price_m2_min,
-                        'price_m2_max': cat_price_m2_max,
-                        'price_min': cat_price_min,
-                        'price_max': cat_price_max,
-                        'area_min': cat_area_min,
-                        'area_max': cat_area_max,
-                        'date_from': cat_date_from,
-                        'date_to': cat_date_to
-                    }
+                        per_category_settings[category] = {
+                            'filter_level': 'category',
+                            'regions': selected_regions if len(selected_regions) > 0 else None,
+                            'price_m2_min': cat_price_m2_min,
+                            'price_m2_max': cat_price_m2_max,
+                            'price_min': cat_price_min,
+                            'price_max': cat_price_max,
+                            'area_min': cat_area_min,
+                            'area_max': cat_area_max,
+                            'date_from': cat_date_from,
+                            'date_to': cat_date_to
+                        }
+                    
+                    else:  # Individual indexes
+                        st.markdown("**📊 Configure Each Index Separately**")
+                        
+                        # Get indexes for this category
+                        category_indexes = final_indexes_config[category]["indexes"]
+                        index_filters = {}
+                        
+                        for idx_config in category_indexes:
+                            index_name = idx_config["name"]
+                            
+                            with st.expander(f"🎯 {index_name}", expanded=False):
+                                all_regions = ['Rīga', 'Pierīga', 'Kurzeme', 'Vidzeme', 'Zemgale', 'Latgale', 'Unknown']
+                                idx_regions = st.multiselect(
+                                    "Regions",
+                                    options=all_regions,
+                                    default=[],
+                                    key=f"idx_regions_{category}_{index_name}",
+                                    help="Leave empty for all regions"
+                                )
+                                
+                                col1, col2 = st.columns(2)
+                                
+                                with col1:
+                                    idx_price_m2_enabled = st.checkbox("Price/m² filter", key=f"idx_pm2_{category}_{index_name}")
+                                    if idx_price_m2_enabled:
+                                        idx_price_m2_min = st.number_input("Min", 0, 50000, 100, 50, key=f"idx_pm2_min_{category}_{index_name}")
+                                        idx_price_m2_max = st.number_input("Max", 0, 50000, 10000, 100, key=f"idx_pm2_max_{category}_{index_name}")
+                                    else:
+                                        idx_price_m2_min = None
+                                        idx_price_m2_max = None
+                                    
+                                    idx_price_enabled = st.checkbox("Price filter", key=f"idx_price_{category}_{index_name}")
+                                    if idx_price_enabled:
+                                        idx_price_min = st.number_input("Min EUR", 0, 10000000, 1000, 1000, key=f"idx_price_min_{category}_{index_name}")
+                                        idx_price_max = st.number_input("Max EUR", 0, 10000000, 10000000, 10000, key=f"idx_price_max_{category}_{index_name}")
+                                    else:
+                                        idx_price_min = None
+                                        idx_price_max = None
+                                
+                                with col2:
+                                    idx_area_enabled = st.checkbox("Area filter", key=f"idx_area_{category}_{index_name}")
+                                    if idx_area_enabled:
+                                        idx_area_min = st.number_input("Min m²", 0.0, 100000.0, 10.0, 5.0, key=f"idx_area_min_{category}_{index_name}")
+                                        idx_area_max = st.number_input("Max m²", 0.0, 100000.0, 10000.0, 50.0, key=f"idx_area_max_{category}_{index_name}")
+                                    else:
+                                        idx_area_min = None
+                                        idx_area_max = None
+                                    
+                                    idx_date_enabled = st.checkbox("Date filter", key=f"idx_date_{category}_{index_name}")
+                                    if idx_date_enabled:
+                                        idx_date_from = st.date_input("From", pd.Timestamp("2014-01-01"), key=f"idx_date_from_{category}_{index_name}")
+                                        idx_date_to = st.date_input("To", pd.Timestamp.now(), key=f"idx_date_to_{category}_{index_name}")
+                                    else:
+                                        idx_date_from = None
+                                        idx_date_to = None
+                                
+                                index_filters[index_name] = {
+                                    'regions': idx_regions if len(idx_regions) > 0 else None,
+                                    'price_m2_min': idx_price_m2_min,
+                                    'price_m2_max': idx_price_m2_max,
+                                    'price_min': idx_price_min,
+                                    'price_max': idx_price_max,
+                                    'area_min': idx_area_min,
+                                    'area_max': idx_area_max,
+                                    'date_from': idx_date_from,
+                                    'date_to': idx_date_to
+                                }
+                        
+                        per_category_settings[category] = {
+                            'filter_level': 'index',
+                            'index_filters': index_filters
+                        }
         else:
             per_category_settings = {}
     
@@ -964,12 +1050,18 @@ def show_final_indexes_master_view():
                                 # Get cached data and filter to regions
                                 df_temp = loaded_data_cache[prop_type]['data'].copy()
                                 
-                                # Apply per-category region filter FIRST (if set)
+                                # Apply per-category/per-index region filter FIRST (if set)
                                 cat_settings = per_category_settings.get(category, {})
-                                cat_regions_filter = cat_settings.get('regions')
-                                if cat_regions_filter and len(cat_regions_filter) > 0:
+                                
+                                # Determine which region filter to use
+                                if cat_settings.get('filter_level') == 'index':
+                                    idx_regions_filter = cat_settings.get('index_filters', {}).get(index_name, {}).get('regions')
+                                else:
+                                    idx_regions_filter = cat_settings.get('regions')
+                                
+                                if idx_regions_filter and len(idx_regions_filter) > 0:
                                     if 'region_riga_separate' in df_temp.columns:
-                                        df_temp = df_temp[df_temp['region_riga_separate'].isin(cat_regions_filter)].copy()
+                                        df_temp = df_temp[df_temp['region_riga_separate'].isin(idx_regions_filter)].copy()
                                 
                                 # Filter to index-specific regions
                                 df_temp = df_temp[df_temp['region_riga_separate'].isin(regions_to_combine)]
@@ -1027,12 +1119,18 @@ def show_final_indexes_master_view():
                             df = loaded_data_cache[prop_type]['data'].copy()
                             base_period = loaded_data_cache[prop_type]['base']
                             
-                            # Apply per-category region filter FIRST (if set)
+                            # Apply per-category/per-index region filter FIRST (if set)
                             cat_settings = per_category_settings.get(category, {})
-                            cat_regions_filter = cat_settings.get('regions')
-                            if cat_regions_filter and len(cat_regions_filter) > 0:
+                            
+                            # Determine which region filter to use
+                            if cat_settings.get('filter_level') == 'index':
+                                idx_regions_filter = cat_settings.get('index_filters', {}).get(index_name, {}).get('regions')
+                            else:
+                                idx_regions_filter = cat_settings.get('regions')
+                            
+                            if idx_regions_filter and len(idx_regions_filter) > 0:
                                 if 'region_riga_separate' in df.columns:
-                                    df = df[df['region_riga_separate'].isin(cat_regions_filter)].copy()
+                                    df = df[df['region_riga_separate'].isin(idx_regions_filter)].copy()
                             
                             # Filter to index-specific regions (will be intersection with cat filter if both set)
                             df_filtered = df[df['region_riga_separate'].isin(regions_to_combine)].copy()
@@ -1072,11 +1170,22 @@ def show_final_indexes_master_view():
                         # Check if there are per-category filter settings
                         cat_settings = per_category_settings.get(category, {})
                         
+                        # Determine which filters to use based on filter level
+                        if cat_settings.get('filter_level') == 'index':
+                            # Use index-specific filters
+                            idx_settings = cat_settings.get('index_filters', {}).get(index_name, {})
+                        elif cat_settings.get('filter_level') == 'category':
+                            # Use category-level filters
+                            idx_settings = cat_settings
+                        else:
+                            # No per-category filters set
+                            idx_settings = {}
+                        
                         # Note: Region filter already applied earlier (before index-level filtering)
                         
-                        # Apply date filter (per-category if available, else global)
-                        date_from_use = cat_settings.get('date_from') if cat_settings.get('date_from') else (date_from if enable_date_filter else None)
-                        date_to_use = cat_settings.get('date_to') if cat_settings.get('date_to') else (date_to if enable_date_filter else None)
+                        # Apply date filter (per-index/per-category if available, else global)
+                        date_from_use = idx_settings.get('date_from') if idx_settings.get('date_from') else (date_from if enable_date_filter else None)
+                        date_to_use = idx_settings.get('date_to') if idx_settings.get('date_to') else (date_to if enable_date_filter else None)
                         
                         if date_from_use and date_to_use:
                             df_filtered = df_filtered[
@@ -1084,9 +1193,9 @@ def show_final_indexes_master_view():
                                 (df_filtered['Date'] <= pd.Timestamp(date_to_use))
                             ].copy()
                         
-                        # Apply price filter (per-category if available, else global)
-                        price_min_use = cat_settings.get('price_min') if cat_settings.get('price_min') is not None else (price_min if enable_price_filter else None)
-                        price_max_use = cat_settings.get('price_max') if cat_settings.get('price_max') is not None else (price_max if enable_price_filter else None)
+                        # Apply price filter (per-index/per-category if available, else global)
+                        price_min_use = idx_settings.get('price_min') if idx_settings.get('price_min') is not None else (price_min if enable_price_filter else None)
+                        price_max_use = idx_settings.get('price_max') if idx_settings.get('price_max') is not None else (price_max if enable_price_filter else None)
                         
                         if price_min_use is not None and price_max_use is not None:
                             df_filtered = df_filtered[
@@ -1094,9 +1203,9 @@ def show_final_indexes_master_view():
                                 (df_filtered['Price_EUR'] <= price_max_use)
                             ].copy()
                         
-                        # Apply area filter (per-category if available, else global)
-                        area_min_use = cat_settings.get('area_min') if cat_settings.get('area_min') is not None else (area_min if enable_area_filter else None)
-                        area_max_use = cat_settings.get('area_max') if cat_settings.get('area_max') is not None else (area_max if enable_area_filter else None)
+                        # Apply area filter (per-index/per-category if available, else global)
+                        area_min_use = idx_settings.get('area_min') if idx_settings.get('area_min') is not None else (area_min if enable_area_filter else None)
+                        area_max_use = idx_settings.get('area_max') if idx_settings.get('area_max') is not None else (area_max if enable_area_filter else None)
                         
                         if area_min_use is not None and area_max_use is not None:
                             df_filtered = df_filtered[
@@ -1104,9 +1213,9 @@ def show_final_indexes_master_view():
                                 (df_filtered['Sold_Area_m2'] <= area_max_use)
                             ].copy()
                         
-                        # Apply price per m2 filter (per-category if available, else global)
-                        price_m2_min_use = cat_settings.get('price_m2_min') if cat_settings.get('price_m2_min') is not None else (price_m2_min if enable_price_m2_filter else None)
-                        price_m2_max_use = cat_settings.get('price_m2_max') if cat_settings.get('price_m2_max') is not None else (price_m2_max if enable_price_m2_filter else None)
+                        # Apply price per m2 filter (per-index/per-category if available, else global)
+                        price_m2_min_use = idx_settings.get('price_m2_min') if idx_settings.get('price_m2_min') is not None else (price_m2_min if enable_price_m2_filter else None)
+                        price_m2_max_use = idx_settings.get('price_m2_max') if idx_settings.get('price_m2_max') is not None else (price_m2_max if enable_price_m2_filter else None)
                         
                         if price_m2_min_use is not None and price_m2_max_use is not None:
                             # Calculate price per m2 for filtering
@@ -1472,22 +1581,26 @@ def show_final_indexes_master_view():
                     # Show if custom filters were applied to this category
                     if st.session_state.get('use_per_category_filters', False):
                         cat_settings = st.session_state.get('per_category_settings', {}).get(category, {})
-                        custom_filters_applied = []
                         
-                        if cat_settings.get('regions') is not None:
-                            regions_list = ' + '.join(cat_settings['regions'])
-                            custom_filters_applied.append(f"🌍 Regions: {regions_list}")
-                        if cat_settings.get('price_m2_min') is not None:
-                            custom_filters_applied.append(f"Price/m²: {cat_settings['price_m2_min']}-{cat_settings['price_m2_max']} EUR")
-                        if cat_settings.get('price_min') is not None:
-                            custom_filters_applied.append(f"Price: {cat_settings['price_min']:,}-{cat_settings['price_max']:,} EUR")
-                        if cat_settings.get('area_min') is not None:
-                            custom_filters_applied.append(f"Area: {cat_settings['area_min']}-{cat_settings['area_max']} m²")
-                        if cat_settings.get('date_from') is not None:
-                            custom_filters_applied.append(f"Date: {cat_settings['date_from']} to {cat_settings['date_to']}")
-                        
-                        if custom_filters_applied:
-                            st.info(f"🎯 **Custom filters for {category}:** " + ", ".join(custom_filters_applied))
+                        if cat_settings.get('filter_level') == 'index':
+                            st.info(f"📊 **Index-Level Filtering Active** - Different filters applied to each index in this category")
+                        elif cat_settings.get('filter_level') == 'category':
+                            custom_filters_applied = []
+                            
+                            if cat_settings.get('regions') is not None:
+                                regions_list = ' + '.join(cat_settings['regions'])
+                                custom_filters_applied.append(f"🌍 Regions: {regions_list}")
+                            if cat_settings.get('price_m2_min') is not None:
+                                custom_filters_applied.append(f"Price/m²: {cat_settings['price_m2_min']}-{cat_settings['price_m2_max']} EUR")
+                            if cat_settings.get('price_min') is not None:
+                                custom_filters_applied.append(f"Price: {cat_settings['price_min']:,}-{cat_settings['price_max']:,} EUR")
+                            if cat_settings.get('area_min') is not None:
+                                custom_filters_applied.append(f"Area: {cat_settings['area_min']}-{cat_settings['area_max']} m²")
+                            if cat_settings.get('date_from') is not None:
+                                custom_filters_applied.append(f"Date: {cat_settings['date_from']} to {cat_settings['date_to']}")
+                            
+                            if custom_filters_applied:
+                                st.info(f"🎯 **Custom filters for {category}:** " + ", ".join(custom_filters_applied))
                     
                     # Create table for this category
                     cat_data = []
@@ -2391,7 +2504,7 @@ def main():
     st.title("🏠 Baltic Real Estate Price Index Analyzer")
     
     # Cache version check - automatically clear stale session state when code updates
-    CODE_VERSION = "v2.2_counts_debug_fix"
+    CODE_VERSION = "v2.3_per_index_filtering"
     if 'code_version' not in st.session_state or st.session_state['code_version'] != CODE_VERSION:
         # Clear all cached results when code version changes
         keys_to_clear = [k for k in st.session_state.keys() if k != 'code_version']
